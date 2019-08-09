@@ -68,7 +68,7 @@ def compute_work(t,sol,par):
 
     # c. continuation value - integrate out taste shock
     logsum,prob = funs.logsum_vec(v_plus_interp[:,:],par.sigma_eta)
-    logsum.reshape(m_plus.shape)
+    logsum = logsum.reshape(m_plus.shape)
     prob = prob[:,0].reshape(m_plus.shape)
 
     # d. reshape

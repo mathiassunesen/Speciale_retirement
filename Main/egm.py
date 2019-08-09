@@ -1,4 +1,5 @@
 from numba import njit, prange
+import numpy as np
 
 # consav
 from consav import linear_interp # for linear interpolation
@@ -6,6 +7,13 @@ from consav import upperenvelope
 
 # local modules
 import utility
+
+@njit(parallel=True)
+def is_sorted(a): # fast implementation
+    for i in range(a.size-1):
+         if a[i+1] < a[i] :
+               return False
+    return True
 
 @njit(parallel=True)
 def solve_bellman_retired(t,sol,par):
