@@ -70,9 +70,11 @@ class RetirementModelClass(ModelClass):
             
             # parameters
             ('T',int32), # integer 32bit
+            ('Tr',int32),
             ('rho',double), # double
             ('beta',double),
             ('alpha',double),
+            ('gamma',double),
             ('sigma_eta',double),
             ('W',double),
             ('sigma_xi',double),            
@@ -147,21 +149,24 @@ class RetirementModelClass(ModelClass):
         
         # demographics
         self.par.T = 20
+        self.par.Tr = 10
         
         # preferences
-        self.par.rho = 2
-        self.par.beta = 0.96        
-        self.par.alpha = 0.75
+        self.par.rho = 0.96
+        self.par.beta = 0.98        
+        self.par.alpha = 0.1
+        self.par.gamma = 0.08
 
         # taste shocks
-        self.par.sigma_eta = 0.0
+        self.par.sigma_eta = 0.435
         
         # income
-        self.par.W = 1
+        self.par.survival_probs = np.linspace(0.98, 0, self.par.T)
+        self.par.Y = 1
         self.par.sigma_xi = 0.2
         
         # saving
-        self.par.R = 1.04
+        self.par.R = 1.03
         
         # grids
         self.par.a_max = 10
@@ -197,8 +202,8 @@ class RetirementModelClass(ModelClass):
         self.par.xi,self.par.xi_w = funs.GaussHermite_lognorm(self.par.sigma_xi,self.par.Nxi)
 
         # create tiled/broadcasted arrays to use in compute
-        self.par.a_work = np.transpose(np.array([self.par.grid_a]*self.par.Nxi))
-        self.par.xi_work = np.array([self.par.xi]*self.par.Na)
+        #self.par.a_work = np.transpose(np.array([self.par.grid_a]*self.par.Nxi))
+        #self.par.xi_work = np.array([self.par.xi]*self.par.Na)
 
         # d. set seed
         np.random.seed(self.par.sim_seed)
@@ -220,8 +225,11 @@ class RetirementModelClass(ModelClass):
         self.sol.v = np.nan*np.zeros((self.par.T,self.par.Na,2))
         self.sol.v_plus = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
         
-        self.sol.c_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))
-        self.sol.v_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))  
+        #self.sol.c_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))
+        #self.sol.v_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))  
+        self.sol.c_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
+        self.sol.v_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na,2))  
+        
         self.sol.c_plus_retired_interp = np.nan*np.zeros((self.par.T-1,self.par.Na))
         self.sol.v_plus_retired_interp = np.nan*np.zeros((self.par.T-1,self.par.Na))        
         self.sol.q = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
@@ -250,10 +258,9 @@ class RetirementModelClass(ModelClass):
             # iii. all other periods
             else:
                 
-                post_decision.compute(t,self.sol,self.par)
-                egm.solve_bellman(t,self.sol,self.par)
-                toc = time.time()
-                print('Iteration', t, ':', toc-tic)
+                post_decision.compute_work(t,self.sol,self.par)
+                egm.solve_bellman_work(t,self.sol,self.par)
+                print('Iteration', t)
                 
 
 

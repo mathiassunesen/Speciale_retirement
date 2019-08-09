@@ -57,18 +57,18 @@ def compute_work(t,sol,par):
     v_plus_raw = sol.v_plus_raw[t]
 
     # a. next period ressources and value
-    a = par.a_work
+    a = par.grid_a
     Y = transitions.income(t,par)
     m_plus = par.R*a + Y
 
     # b. interpolate
     for id in prange(2): # in parallel
-        linear_interp.interp_1d_vec(m[:,id],c[:,id],m_plus[:,0],c_plus_interp[:,id])
-        linear_interp.interp_1d_vec(m[:,id],v[:,id],m_plus[:,0],v_plus_interp[:,id])
+        linear_interp.interp_1d_vec(m[:,id],c[:,id],m_plus,c_plus_interp[:,id])
+        linear_interp.interp_1d_vec(m[:,id],v[:,id],m_plus,v_plus_interp[:,id])
 
     # c. continuation value - integrate out taste shock
     logsum,prob = funs.logsum_vec(v_plus_interp[:,:],par.sigma_eta)
-    v_plus_raw = logsum.reshape(m_plus.shape) # reshape
+    logsum.reshape(m_plus.shape)
     prob = prob[:,0].reshape(m_plus.shape)
 
     # d. reshape
@@ -80,5 +80,5 @@ def compute_work(t,sol,par):
 
     # e. store result in q
     pi = transitions.survival(t,par)    
-    v_plus_raw[:,1] = v_plus_raw
+    v_plus_raw[:,1] = logsum
     q[:,1] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma)

@@ -2,7 +2,7 @@ from numba import njit
 
 @njit
 def func(c,d,par):
-    return c**(1-par.rho)/(1-par.rho) - (d == 1) * par.alpha
+    return c**(1-par.rho)/(1-par.rho) + (d == 0) * par.alpha
 
 @njit
 def marg_func(c,par):
