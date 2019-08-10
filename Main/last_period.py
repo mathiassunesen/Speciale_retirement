@@ -13,17 +13,20 @@ def solve(t,sol,par):
     v = sol.v[t,:,0]
     c = sol.c[t,:,0]
 
-    # last period
-    m = np.linspace(1e-6,par.a_max,par.Na)
-    c = np.linspace(1e-6,par.a_max,par.Na)
+    # initialize
+    m[:] = np.linspace(1e-6,par.a_max,par.Na) # important to do m[:] and not just m (otherwise sol.m[t,:,0] doesn't update)
+    c[:] = np.linspace(1e-6,par.a_max,par.Na)
+    
+    # find consumption
     cons = (par.beta*par.gamma)**(-1/par.rho)
     for i in reversed(range(len(m))):
         if m[i] > cons:
                 c[i] = cons
         else:
                 break
-
-    v = par.gamma*(m-c)
+    
+    # value
+    v[:] = par.gamma*(m-c)
 
 
 
