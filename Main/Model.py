@@ -83,6 +83,7 @@ class RetirementModelClass(ModelClass):
             ('a_phi',int32),
             ('Nxi',int32),
             ('Na',int32),
+            ('poc',int32),
 
             # grids            
             ('grid_a',double[:]), # 1d array of doubles    
@@ -167,7 +168,7 @@ class RetirementModelClass(ModelClass):
         
         # income
         self.par.survival_probs = np.linspace(0.98, 0, self.par.T)
-        self.par.Y = 5
+        self.par.Y = 1
         self.par.sigma_xi = 0.2
         
         # saving
@@ -178,6 +179,7 @@ class RetirementModelClass(ModelClass):
         self.par.a_phi = 1.1
         self.par.Nxi = 8
         self.par.Na = 150
+        self.par.poc = 10 # points on constraint
         
         # misc
         self.par.tol = 1e-8
@@ -225,9 +227,9 @@ class RetirementModelClass(ModelClass):
     def _solve_prep(self):
         """ allocate memory for solution """
 
-        self.sol.c = np.nan*np.ones((self.par.T,self.par.Na,2))        
-        self.sol.m = np.nan*np.zeros((self.par.T,self.par.Na,2))
-        self.sol.v = np.nan*np.zeros((self.par.T,self.par.Na,2))
+        self.sol.c = np.nan*np.ones((self.par.T,self.par.Na+self.par.poc,2))        
+        self.sol.m = np.nan*np.zeros((self.par.T,self.par.Na+self.par.poc,2))
+        self.sol.v = np.nan*np.zeros((self.par.T,self.par.Na+self.par.poc,2))
         self.sol.v_plus = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
         
         #self.sol.c_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))
