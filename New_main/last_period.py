@@ -33,7 +33,8 @@ def solve(t,sol,par):
     #            break
     
     # optimal value
-    v[:] = utility.func(c,0,par) + par.beta*par.gamma*(m-c)
+    v[:] = utility.func(c,0,par)
+    #v[:] = par.gamma*(m-c) this is v_plus!
 
 
 

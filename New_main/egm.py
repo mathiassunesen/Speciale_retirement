@@ -28,12 +28,11 @@ def solve_bellman_retired(t,sol,par):
     v = sol.v[t,poc:,0]
     q = sol.q[t,:,0]
     v_plus_raw = sol.v_plus_raw[t,:,0]
-    pi = transitions.survival(t,par)     
 
     # a. solution
     c[:] = utility.inv_marg_func(q,par)
     m[:] = par.grid_a + c
-    v[:] = utility.func(c,0,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)   
+    v[:] = utility.func(c,0,par) + par.beta*v_plus_raw
 
 @njit(parallel=True)
 def solve_bellman_work(t,sol,par):

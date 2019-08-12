@@ -124,7 +124,6 @@ class RetirementModelClass(ModelClass):
             ('v',double[:,:]),
             ('a',double[:,:]),
             ('d',double[:,:]),
-            ('alive',double[:,:]),
             ('c_interp',double[:,:,:]),
             ('v_interp',double[:,:,:]),        
             ('xi',double[:,:]),
@@ -155,8 +154,8 @@ class RetirementModelClass(ModelClass):
         # a. baseline parameters
         
         # demographics
-        self.par.T = 43
-        self.par.Tr = 20
+        self.par.T = 20
+        self.par.Tr = 10
         
         # preferences
         self.par.rho = 0.96
@@ -168,10 +167,7 @@ class RetirementModelClass(ModelClass):
         self.par.sigma_eta = 0.435
         
         # income
-        self.par.survival_probs = [0.93332,0.92671,0.91968,0.9122,0.90353,0.89422,0.88423,0.87364,0.86206,0.85021,0.8376,0.82413,
-        0.80948,0.79404,0.77662,0.75878,0.73998,0.71921,0.69671,0.67324,0.64902,0.6217,0.59297,0.56204,
-        0.52884,0.49319,0.45634,0.417,0.37826,0.3387,0.29866,0.25961,0.22125,0.18481,0.15198,0.12157,
-        0.09393,0.07043,0.05243,0.038,0.02596,0.01707,0.01127] #DST fra tabel: HISB9
+        self.par.survival_probs = np.linspace(0.98, 0, self.par.T)
         self.par.Y = 1
         self.par.sigma_xi = 0.2
         
@@ -179,7 +175,7 @@ class RetirementModelClass(ModelClass):
         self.par.R = 1.03
         
         # grids
-        self.par.a_max = 100 # denominated in 100.000 kr
+        self.par.a_max = 10
         self.par.a_phi = 1.1
         self.par.Nxi = 8
         self.par.Na = 150
@@ -287,14 +283,12 @@ class RetirementModelClass(ModelClass):
         self.sim.c = np.nan*np.zeros((self.par.simT,self.par.simN))
         self.sim.v = np.nan*np.zeros((self.par.simT,self.par.simN))
         self.sim.d = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.alive = np.ones((self.par.simT,self.par.simN)) #dummy for alive
         self.sim.a = np.nan*np.zeros((self.par.simT,self.par.simN))
         self.sim.c_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))
         self.sim.v_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))                     
 
         # b. draw random shocks
         self.sim.unif = np.random.rand(self.par.simT,self.par.simN)
-        self.sim.suvP = np.random.rand(self.par.simT,self.par.simN)
 
     def simulate(self):
         """ simulate model """
