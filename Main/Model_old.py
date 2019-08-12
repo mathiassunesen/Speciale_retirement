@@ -83,7 +83,6 @@ class RetirementModelClass(ModelClass):
             ('a_phi',int32),
             ('Nxi',int32),
             ('Na',int32),
-            ('poc',int32),
 
             # grids            
             ('grid_a',double[:]), # 1d array of doubles    
@@ -169,10 +168,10 @@ class RetirementModelClass(ModelClass):
         
         # income
         self.par.survival_probs = [0.93332,0.92671,0.91968,0.9122,0.90353,0.89422,0.88423,0.87364,0.86206,0.85021,0.8376,0.82413,
-        0.80948,0.79404,0.77662,0.75878,0.73998,0.71921,0.69671,0.67324,0.64902,0.6217,0.59297,0.56204,
-        0.52884,0.49319,0.45634,0.417,0.37826,0.3387,0.29866,0.25961,0.22125,0.18481,0.15198,0.12157,
-        0.09393,0.07043,0.05243,0.038,0.02596,0.01707,0.01127] #DST fra tabel: HISB9
-        self.par.Y = 1
+                                   0.80948,0.79404,0.77662,0.75878,0.73998,0.71921,0.69671,0.67324,0.64902,0.6217,0.59297,0.56204,
+                                   0.52884,0.49319,0.45634,0.417,0.37826,0.3387,0.29866,0.25961,0.22125,0.18481,0.15198,0.12157,
+                                   0.09393,0.07043,0.05243,0.038,0.02596,0.01707,0.01127] #DST fra tabel: HISB9
+        self.par.Y = 5
         self.par.sigma_xi = 0.2
         
         # saving
@@ -183,7 +182,6 @@ class RetirementModelClass(ModelClass):
         self.par.a_phi = 1.1
         self.par.Nxi = 8
         self.par.Na = 150
-        self.par.poc = 10 # points on constraint
         
         # misc
         self.par.tol = 1e-8
@@ -231,9 +229,9 @@ class RetirementModelClass(ModelClass):
     def _solve_prep(self):
         """ allocate memory for solution """
 
-        self.sol.c = np.nan*np.ones((self.par.T,self.par.Na+self.par.poc,2))        
-        self.sol.m = np.nan*np.zeros((self.par.T,self.par.Na+self.par.poc,2))
-        self.sol.v = np.nan*np.zeros((self.par.T,self.par.Na+self.par.poc,2))
+        self.sol.c = np.nan*np.ones((self.par.T,self.par.Na,2))        
+        self.sol.m = np.nan*np.zeros((self.par.T,self.par.Na,2))
+        self.sol.v = np.nan*np.zeros((self.par.T,self.par.Na,2))
         self.sol.v_plus = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
         
         #self.sol.c_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))
