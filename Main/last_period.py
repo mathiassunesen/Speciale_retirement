@@ -19,11 +19,17 @@ def solve(t,sol,par):
     
     # optimal choice
     cons = (par.beta*par.gamma)**(-1/par.rho)
-    for i in reversed(range(len(m))):
+    for i in prange(len(m)):
         if m[i] > cons:
                 c[i] = cons
         else:
-                break
+                c[i] = m[i]
+    
+    #for i in reversed(range(len(m))):
+    #    if m[i] > cons:
+    #            c[i] = cons
+    #    else:
+    #            break
     
     # optimal value
     v[:] = utility.func(c[:],0,par)

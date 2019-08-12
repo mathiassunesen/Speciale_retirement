@@ -21,12 +21,12 @@ def lifecycle(sim,sol,par):
     v_interp = sim.v_interp                         
     unif = sim.unif
     
-    for t in range(par.simT):
+    for t in prange(par.simT):
         for i in range(par.simN): # in parallel
             
             # a. states
             if t == 0: # initialize
-                m[t,i] = 100
+                m[t,i] = 10
             elif t < par.Tr-1: # working
                 Y = transitions.income(t,par)
                 m[t,i] = par.R*a[t-1,i] + d[t-1,i]*Y
@@ -40,7 +40,7 @@ def lifecycle(sim,sol,par):
 
             logsum,prob = funs.logsum_vec(v_interp[t,i,:].reshape(1,2),par.sigma_eta)
             prob = prob[0] # unpack it. this is strange!!!
-            if (t >= par.Tr-1 or d[t-1,i] == 0 or prob[0] > unif[t,i]: # if forced to retire, is retired, prob of retiring exceeds threshold
+            if (t >= par.Tr-1 or d[t-1,i] == 0 or prob[0] > unif[t,i]): # if forced to retire, is retired, prob of retiring exceeds threshold
                 d[t,i] = 0 # retire
                 c[t,i] = c_interp[t,i,0]
             else:
