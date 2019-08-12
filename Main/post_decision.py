@@ -47,9 +47,15 @@ def compute_work(t,sol,par):
     """compute the post-decision function if working"""
 
     # unpack (helps numba optimize)
-    c = sol.c[t+1]
+    c = sol.c[t+1] # we only have data for retired, this gives problems later on
     m = sol.m[t+1]
     v = sol.v[t+1]
+
+    # if forced to retire next period
+    if t == par.Tr-2:
+        c[:,1] = c[:,0]
+        m[:,1] = m[:,0]
+        v[:,1] = v[:,0]
     
     c_plus_interp = sol.c_plus_interp[t]
     v_plus_interp = sol.v_plus_interp[t]

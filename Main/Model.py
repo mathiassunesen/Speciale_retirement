@@ -120,9 +120,14 @@ class RetirementModelClass(ModelClass):
             ('p',double[:,:]),
             ('m',double[:,:]),
             ('c',double[:,:]),
+            ('v',double[:,:]),
             ('a',double[:,:]),
+            ('d',double[:,:]),
+            ('c_interp',double[:,:,:]),
+            ('v_interp',double[:,:,:]),        
             ('xi',double[:,:]),
-            ('psi',double[:,:])
+            ('psi',double[:,:]),
+            ('unif',double[:,:])
         ]      
 
         # b. create subclasses
@@ -162,7 +167,7 @@ class RetirementModelClass(ModelClass):
         
         # income
         self.par.survival_probs = np.linspace(0.98, 0, self.par.T)
-        self.par.Y = 1
+        self.par.Y = 5
         self.par.sigma_xi = 0.2
         
         # saving
@@ -258,10 +263,40 @@ class RetirementModelClass(ModelClass):
             # iii. all other periods
             else:
                 
+                post_decision.compute_retired(t,self.sol,self.par)
                 post_decision.compute_work(t,self.sol,self.par)
                 egm.solve_bellman_work(t,self.sol,self.par)
                 print('Iteration', t)
-                
+
+    ############
+    # simulate #
+    ############
+
+    def _simulate_prep(self):
+        """ allocate memory for simulation and draw random numbers """
+
+        # a. allocate
+        self.sim.p = np.nan*np.zeros((self.par.simT,self.par.simN))
+        self.sim.m = np.nan*np.zeros((self.par.simT,self.par.simN))
+        self.sim.c = np.nan*np.zeros((self.par.simT,self.par.simN))
+        self.sim.v = np.nan*np.zeros((self.par.simT,self.par.simN))
+        self.sim.d = np.nan*np.zeros((self.par.simT,self.par.simN))
+        self.sim.a = np.nan*np.zeros((self.par.simT,self.par.simN))
+        self.sim.c_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))
+        self.sim.v_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))                     
+
+        # b. draw random shocks
+        self.sim.unif = np.random.rand(self.par.simT,self.par.simN)
+
+    def simulate(self):
+        """ simulate model """
+
+        # a. allocate memory and draw random numbers
+        self._simulate_prep()
+
+        # b. simulate
+        self.par.simT = self.par.T
+        simulate.lifecycle(self.sim,self.sol,self.par)
 
 
 #to debug code
@@ -269,4 +304,4 @@ from consav import runtools
 runtools.write_numba_config(disable=1,threads=8)
 model = RetirementModelClass(name='baseline',solmethod='egm')
 model.solve()
-print(model.sol.c)
+model.simulate()

@@ -39,14 +39,14 @@ def logsum_vec(V, sigma): # supports only 2 columns
     
     # 1. setup
     cols = V.shape[1]
-
+    
     # 2. maximum over the discrete choices
     mxm = np.maximum(V[:,0], V[:,1]).reshape(len(V),1)
 
     # 3. logsum and probabilities
     if abs(sigma) > 1e-10:
         log_sum = mxm + sigma*np.log(np.sum(np.exp((V - mxm @ np.ones((1,cols)))/sigma), 
-        axis=1)).reshape(mxm.shape)
+                                            axis=1)).reshape(mxm.shape)
         prob = np.exp((V - log_sum*np.ones((1,cols)))/sigma)
 
     else:

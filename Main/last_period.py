@@ -17,7 +17,7 @@ def solve(t,sol,par):
     m[:] = np.linspace(1e-6,par.a_max,par.Na) # important to do m[:] and not just m (otherwise sol.m[t,:,0] doesn't update)
     c[:] = np.linspace(1e-6,par.a_max,par.Na)
     
-    # find consumption
+    # optimal choice
     cons = (par.beta*par.gamma)**(-1/par.rho)
     for i in reversed(range(len(m))):
         if m[i] > cons:
@@ -25,8 +25,9 @@ def solve(t,sol,par):
         else:
                 break
     
-    # value
-    v[:] = par.gamma*(m-c)
+    # optimal value
+    v[:] = utility.func(c[:],0,par)
+    #v[:] = par.gamma*(m-c) this is v_plus!
 
 
 
