@@ -68,7 +68,6 @@ def solve_bellman_work(t,sol,par):
         v[:,1] = v_raw
     else:
         print('envelope')
-        print('')
         envelope = upperenvelope.create(utility.func)
         envelope(par.grid_a,m_raw,c_raw,v_raw,m[:,1], # input
                  c[:,1],v[:,1], # output

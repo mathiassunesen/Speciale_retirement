@@ -28,7 +28,7 @@ def compute_retired(t,sol,par):
     
     # a. next period ressources and value
     a = par.grid_a
-    m_plus = par.R*a
+    m_plus = par.R*a + transitions.pension(t,par)
 
     # b. interpolate       
     linear_interp.interp_1d_vec(m,c,m_plus,c_plus_retired_interp)
@@ -48,19 +48,14 @@ def compute_work(t,sol,par):
     """compute the post-decision function if working"""
 
     # unpack (helps numba optimize)
-    poc = par.poc # points on constraint
-    if t == par.Tr-2: # if forced to retire next period
-        c = sol.c[t+1,poc:] # ignore/leave points on constraint
-        m = sol.m[t+1,poc:]
-        v = sol.v[t+1,poc:]
+    c = sol.c[t+1]
+    m = sol.m[t+1]
+    v = sol.v[t+1]
 
+    if t == par.Tr-2: # if forced to retire next period
         c[:,1] = c[:,0]
         m[:,1] = m[:,0]
         v[:,1] = v[:,0]
-    else:
-        c = sol.c[t+1]
-        m = sol.m[t+1]
-        v = sol.v[t+1]
                         
     c_plus_interp = sol.c_plus_interp[t]
     v_plus_interp = sol.v_plus_interp[t]
@@ -69,8 +64,7 @@ def compute_work(t,sol,par):
 
     # a. next period ressources and value
     a = par.grid_a
-    Y = transitions.income(t,par)
-    m_plus = par.R*a + Y
+    m_plus = par.R*a + transitions.income(t,par) # no pension if working + transitions.pension(t,par)
 
     # b. interpolate
     for id in prange(2): # in parallel
@@ -78,7 +72,7 @@ def compute_work(t,sol,par):
         linear_interp.interp_1d_vec(m[:,id],v[:,id],m_plus,v_plus_interp[:,id])
 
     # c. continuation value - integrate out taste shock
-    logsum,prob = funs.logsum_vec(v_plus_interp,par.sigma_eta)
+    logsum,prob = funs.logsum_vec(v_plus_interp,par)
     logsum = logsum.reshape(m_plus.shape)
     prob = prob[:,0].reshape(m_plus.shape)
 
@@ -112,7 +106,7 @@ def value_of_choice(t,m,c,sol,par):
     # b. next period value
     linear_interp.interp_1d_vec(sol.m[t+1,poc:,0],sol.v[t+1,poc:,0],m_plus,v_plus_interp[:,0])
     linear_interp.interp_1d_vec(sol.m[t+1,poc:,1],sol.v[t+1,poc:,1],m_plus,v_plus_interp[:,1])    
-    logsum,prob = funs.logsum_vec(v_plus_interp,par.sigma_eta)
+    logsum,prob = funs.logsum_vec(v_plus_interp,par)
     logsum = logsum.reshape(a.shape)
     
     # c. value-of-choice
