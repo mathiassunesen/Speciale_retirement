@@ -64,7 +64,7 @@ def compute_work(t,sol,par):
 
     # a. next period ressources and value
     a = par.grid_a
-    m_plus = par.R*a + transitions.income(t,par) # no pension if working + transitions.pension(t,par)
+    m_plus = par.R*a + transitions.income(t,par)
 
     # b. interpolate
     for id in prange(2): # in parallel

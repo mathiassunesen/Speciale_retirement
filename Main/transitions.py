@@ -19,8 +19,8 @@ def pension(t,par): # efterløn
         p = 182780
     else:
         p = oap(t,par)
-    #return p/100000
-    return 0
+    return p/100000
+    #return 0
 
 @njit(parallel=True)
 def income(t,par):

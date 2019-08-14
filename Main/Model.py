@@ -295,9 +295,10 @@ class RetirementModelClass(ModelClass):
         self.sim.c_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))
         self.sim.v_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))                     
 
-        # b. initialize m
+        # b. initialize m and d
         self.sim.m[0,:] = np.random.lognormal(np.log(25),1.2,self.par.simN) # initial m, lognormal dist
         #self.sim.m[0,:] = 10*np.ones(par.simN) # initial m        
+        self.sim.d[0,:] = np.ones(self.par.simN)
 
         # c. draw random shocks
         self.sim.unif = np.random.rand(self.par.simT,self.par.simN)

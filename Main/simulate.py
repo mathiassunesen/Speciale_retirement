@@ -23,24 +23,19 @@ def lifecycle(sim,sol,par):
     unif = sim.unif
     deadP = sim.deadP
 
- 
-
     for t in range(par.simT):
         for i in prange(par.simN): # in parallel
-
 
             # a. check if alive
             if  alive[t-1,i] == 0 or par.survival_probs[t] < deadP[t,i]:
                 alive[t,i] = 0 # Still dead
                 continue 
                           
-            # b. working
-            if (t == 0) or (t < par.Tr-1 and d[t-1,i] == 1):
-                if (t==0):
-                    pass
-                else:
+            # working
+            if (t < par.Tr-1 and d[t,i] == 1):
+                if (t > 0):
                     m[t,i] = par.R*a[t-1,i] + transitions.income(t,par)
-                
+
                 # retirement and consumption choice
                 for id in range(2):
                     c_interp[t,i,id] = linear_interp.interp_1d(sol.m[t,:,id],sol.c[t,:,id],m[t,i])
@@ -50,17 +45,20 @@ def lifecycle(sim,sol,par):
                 prob = prob[0] # unpack it. this is strange!!!
             
                 if (prob[0] > unif[t,i]): # if prob of retiring exceeds threshold
-                    d[t,i] = 0 # retire
+                    d[t+1,i] = 0 # retire
                     c[t,i] = c_interp[t,i,0]
                 else:
-                    d[t,i] = 1 # work
-                    c[t,i] = c_interp[t,i,1]
-
-            # c. retired
-            else: 
+                    d[t+1,i] = 1 # work
+                    c[t,i] = c_interp[t,i,1]                                                        
+            
+            # retired
+            else:            
                 m[t,i] = par.R*a[t-1,i] + transitions.pension(t,par)
                 c[t,i] = linear_interp.interp_1d(sol.m[t,:,0],sol.c[t,:,0],m[t,i])
-                d[t,i] = 0 # still retired
+                if (t < par.simT-1): # if not last period
+                    d[t+1,i] = 0 # still retired                
 
-            # d. update end of period wealth
+            # b. update end of period wealth
             a[t,i] = m[t,i]-c[t,i]
+
+

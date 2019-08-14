@@ -13,7 +13,7 @@ import transitions
 @njit(parallel=True)
 def is_sorted(a): # fast implementation
     for i in range(a.size-1):
-         if a[i+1] < a[i] :
+         if a[i+1] < a[i]:
                return False
     return True
 
