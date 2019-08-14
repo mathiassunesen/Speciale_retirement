@@ -76,7 +76,6 @@ class RetirementModelClass(ModelClass):
             ('alpha',double),
             ('gamma',double),
             ('sigma_eta',double),
-            ('W',double),
             ('sigma_xi',double),            
             ('R',double),
             ('a_max',int32),
@@ -88,9 +87,9 @@ class RetirementModelClass(ModelClass):
             # grids            
             ('grid_a',double[:]), # 1d array of doubles    
             ('xi',double[:]),        
-            ('xi_w',double[:]),
-            ('a_work',double[:,:]), # 2d array of doubles
-            ('xi_work',double[:,:]),
+            #('xi_w',double[:]),
+            #('a_work',double[:,:]), # 2d array of doubles
+            #('xi_work',double[:,:]),
 
             # misc
             ('tol',double),
@@ -155,8 +154,8 @@ class RetirementModelClass(ModelClass):
         # a. baseline parameters
         
         # demographics
-        self.par.T = 43
-        self.par.Tr = 20
+        self.par.T = 110-57+1 # 57-110 years
+        self.par.Tr = 77-57+1 # forced retirement at 77 years
         
         # preferences
         self.par.rho = 0.96
@@ -166,12 +165,17 @@ class RetirementModelClass(ModelClass):
 
         # taste shocks
         self.par.sigma_eta = 0.435
-        
+
         # income
-        self.par.survival_probs = [0.93332,0.92671,0.91968,0.9122,0.90353,0.89422,0.88423,0.87364,0.86206,0.85021,0.8376,0.82413,
-        0.80948,0.79404,0.77662,0.75878,0.73998,0.71921,0.69671,0.67324,0.64902,0.6217,0.59297,0.56204,
-        0.52884,0.49319,0.45634,0.417,0.37826,0.3387,0.29866,0.25961,0.22125,0.18481,0.15198,0.12157,
-        0.09393,0.07043,0.05243,0.038,0.02596,0.01707,0.01127] #DST fra tabel: HISB9
+        men_surv_to_99 = [0.99292,0.99242,0.99186,0.9905,0.98969,0.98883,0.98803,0.98674,0.98626,
+        0.98516,0.98393,0.98222,0.98092,0.97806,0.97702,0.97523,0.97193,0.96871,0.96631,0.96403,0.9579,
+        0.95379,0.94785,0.94092,0.9326,0.92529,0.91379,0.9071,0.89541,0.88177,0.86924,0.85226,0.83528,
+        0.82236,0.79992,0.77261,0.74983,0.74447,0.72467,0.68315,0.65767,0.66008,0.60322] # DST fra tabel: HISB9, 1-dødshyppighed
+        self.par.survival_probs = men_surv_to_99 + list(np.linspace(men_surv_to_99[-1],0,110-99))
+        #self.par.survival_probs = [0.93332,0.92671,0.91968,0.9122,0.90353,0.89422,0.88423,0.87364,0.86206,0.85021,0.8376,0.82413,
+        #0.80948,0.79404,0.77662,0.75878,0.73998,0.71921,0.69671,0.67324,0.64902,0.6217,0.59297,0.56204,
+        #0.52884,0.49319,0.45634,0.417,0.37826,0.3387,0.29866,0.25961,0.22125,0.18481,0.15198,0.12157,
+        #0.09393,0.07043,0.05243,0.038,0.02596,0.01707,0.01127] #DST fra tabel: HISB9
         self.par.Y = 1
         self.par.sigma_xi = 0.2
         
@@ -272,7 +276,6 @@ class RetirementModelClass(ModelClass):
                 post_decision.compute_retired(t,self.sol,self.par)
                 post_decision.compute_work(t,self.sol,self.par)
                 egm.solve_bellman_work(t,self.sol,self.par)
-                print('Iteration', t)
 
     ############
     # simulate #
@@ -292,7 +295,11 @@ class RetirementModelClass(ModelClass):
         self.sim.c_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))
         self.sim.v_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))                     
 
-        # b. draw random shocks
+        # b. initialize m
+        self.sim.m[0,:] = np.random.lognormal(np.log(25),1.2,self.par.simN) # initial m, lognormal dist
+        #self.sim.m[0,:] = 10*np.ones(par.simN) # initial m        
+
+        # c. draw random shocks
         self.sim.unif = np.random.rand(self.par.simT,self.par.simN)
         self.sim.suvP = np.random.rand(self.par.simT,self.par.simN)
 

@@ -35,9 +35,10 @@ def logsum(v1, v2, sigma):
     return log_sum,prob
 
 @njit(parallel=True)
-def logsum_vec(V, sigma): # supports only 2 columns
+def logsum_vec(V, par): # supports only 2 columns in order to be implemented in numba
     
     # 1. setup
+    sigma = par.sigma_eta
     cols = V.shape[1]
     
     # 2. maximum over the discrete choices
@@ -45,12 +46,12 @@ def logsum_vec(V, sigma): # supports only 2 columns
 
     # 3. logsum and probabilities
     if abs(sigma) > 1e-10:
-        log_sum = mxm + sigma*np.log(np.sum(np.exp((V - mxm @ np.ones((1,cols)))/sigma), 
+        logsum = mxm + sigma*np.log(np.sum(np.exp((V - mxm*np.ones((1,cols)))/sigma), 
                                             axis=1)).reshape(mxm.shape)
-        prob = np.exp((V - log_sum*np.ones((1,cols)))/sigma)
+        prob = np.exp((V - logsum*np.ones((1,cols)))/sigma)
 
     else:
-        log_sum = mxm
+        logsum = mxm
         prob = np.zeros_like(V)
         for i in range(len(V)):
             if V[i,0] > V[i,1]:
@@ -58,4 +59,4 @@ def logsum_vec(V, sigma): # supports only 2 columns
             else:
                 prob[i,1] = 1 
 
-    return log_sum,prob
+    return logsum,prob
