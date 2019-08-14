@@ -21,13 +21,13 @@ def lifecycle(sim,sol,par):
     c_interp = sim.c_interp
     v_interp = sim.v_interp                         
     unif = sim.unif
-    suvP = sim.suvP
+    deadP = sim.deadP
  
 
     for t in prange(par.simT):
         for i in range(par.simN): # in parallel
 
-            if  alive[t-1,i] == 0 or par.survival_probs[t] < suvP[t,i]:
+            if  alive[t-1,i] == 0 or par.survival_probs[t] < deadP[t,i]:
                 alive[t,i] = 0 # Still dead
                 continue 
                           
