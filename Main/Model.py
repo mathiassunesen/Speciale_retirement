@@ -301,7 +301,7 @@ class RetirementModelClass(ModelClass):
 
         # c. draw random shocks
         self.sim.unif = np.random.rand(self.par.simT,self.par.simN)
-        self.sim.suvP = np.random.rand(self.par.simT,self.par.simN)
+        self.sim.deadP = np.random.rand(self.par.simT,self.par.simN)
 
     def simulate(self):
         """ simulate model """
