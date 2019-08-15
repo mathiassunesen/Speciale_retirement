@@ -23,9 +23,18 @@ def pension(t,par): # efterløn
     #return 0
 
 @njit(parallel=True)
+def priv_pension(t,sol,par):
+    at = age(t)
+    lw = np.log(sol.a[t-1])
+    frac = -57.670 + 0.216*at - 0.187*(at**2)/100 + 12.057*lw -0.920*(lw**2) + 0.023*(lw**3)
+    return frac*sol.a[t-1]
+
+@njit(parallel=True)
 def income(t,par):
-    return (-5.999 + 0.629*age(t) - 0.532*age(t)**2/100)/5.5
+    return np.exp(-15.956 + 0.934*age(t) - 0.770*age(t)**2/100)/100000
 
 @njit(parallel=True)
 def survival(t,par):
-    return par.survival_probs[t]
+    #return par.survival_probs[t]
+    tmp = min(1,np.exp(-10.338 + 0.097*age(t)))
+    return min(1,(1 - tmp))

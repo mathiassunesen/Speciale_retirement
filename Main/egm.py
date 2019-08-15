@@ -35,6 +35,9 @@ def solve_bellman_retired(t,sol,par):
     m[:] = par.grid_a + c
     v[:] = utility.func(c,0,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)   
 
+    # b. add points on constraint
+    points_on_constraint(t,0,sol,par)    
+
 @njit(parallel=True)
 def solve_bellman_work(t,sol,par):
     """solve the bellman equation using the endogenous grid method"""
@@ -74,22 +77,30 @@ def solve_bellman_work(t,sol,par):
                  1,par) # args for utility function
 
     # c. add points on constraint
-    points_on_constraint(t,sol,par)
+    points_on_constraint(t,0,sol,par)    
+    points_on_constraint(t,1,sol,par)
 
     
 @njit(parallel=True)
-def points_on_constraint(t,sol,par):
+def points_on_constraint(t,d,sol,par):
     """add points on the constraint"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    low_c = sol.c[t,poc,1] # lowest point of the inner solution
-    c = sol.c[t,:poc,1] # only consider points on constraint
-    m = sol.m[t,:poc,1]
-    v = sol.v[t,:poc,1]
+    low_c = sol.c[t,poc,d] # lowest point of the inner solution
+    c = sol.c[t,:poc,d] # only consider points on constraint
+    m = sol.m[t,:poc,d]
+    v = sol.v[t,:poc,d]
 
     # add points on constraint
-    c[:] = np.linspace(1e-6,low_c-1e-6,poc)
+    if low_c > 1e-6:
+        c[:] = np.linspace(1e-6,low_c-1e-6,poc)
+    else:
+        c[:] = np.linspace(low_c/3,low_c/2,poc)
     m[:] = c[:]
-    v[:] = post_decision.value_of_choice(t,m,c,sol,par)
+    
+    if d == 0:
+        v[:] = post_decision.value_of_choice_retired(t,m,c,sol,par)
+    else:
+        v[:] = post_decision.value_of_choice_work(t,m,c,sol,par)
 

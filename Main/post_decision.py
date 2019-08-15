@@ -17,9 +17,9 @@ def compute_retired(t,sol,par):
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    c = sol.c[t+1,poc:,0] # leave/ignore points on constraint
-    m = sol.m[t+1,poc:,0]
-    v = sol.v[t+1,poc:,0]
+    c = sol.c[t+1,:,0] # leave/ignore points on constraint
+    m = sol.m[t+1,:,0]
+    v = sol.v[t+1,:,0]
     
     c_plus_retired_interp = sol.c_plus_retired_interp[t]
     v_plus_retired_interp = sol.v_plus_retired_interp[t]  
@@ -90,22 +90,42 @@ def compute_work(t,sol,par):
 
 
 @njit(parallel=True)
-def value_of_choice(t,m,c,sol,par):
+def value_of_choice_retired(t,m,c,sol,par):
     """compute the value-of-choice"""
     
     # initialize
     poc = par.poc
+    v_plus_interp = np.nan*np.zeros(poc)
 
+    # a. next period ressources
+    a = m-c
+    m_plus = par.R*a + transitions.pension(t,par)
+
+    # b. next period value
+    linear_interp.interp_1d_vec(sol.m[t+1,:,0],sol.v[t+1,:,0],m_plus,v_plus_interp)
+    
+    # c. value-of-choice
+    pi = transitions.survival(t,par)
+    v = utility.func(c,0,par) + par.beta*(pi*v_plus_interp + (1-pi)*par.gamma*a)
+    return v
+
+
+@njit(parallel=True)
+def value_of_choice_work(t,m,c,sol,par):
+    """compute the value-of-choice"""
+    
+    # initialize
+    poc = par.poc
     v_plus_interp = np.nan*np.zeros((poc,2))
 
     # a. next period ressources
     a = m-c
-    Y = transitions.income(t,par)
-    m_plus = par.R*a + Y
+    m_plus = par.R*a + transitions.income(t,par)
 
     # b. next period value
-    linear_interp.interp_1d_vec(sol.m[t+1,poc:,0],sol.v[t+1,poc:,0],m_plus,v_plus_interp[:,0])
-    linear_interp.interp_1d_vec(sol.m[t+1,poc:,1],sol.v[t+1,poc:,1],m_plus,v_plus_interp[:,1])    
+    for id in prange(2):
+        linear_interp.interp_1d_vec(sol.m[t+1,:,id],sol.v[t+1,:,id],m_plus,v_plus_interp[:,id])
+
     logsum,prob = funs.logsum_vec(v_plus_interp,par)
     logsum = logsum.reshape(a.shape)
     
