@@ -87,9 +87,6 @@ class RetirementModelClass(ModelClass):
             # grids            
             ('grid_a',double[:]), # 1d array of doubles    
             ('xi',double[:]),        
-            #('xi_w',double[:]),
-            #('a_work',double[:,:]), # 2d array of doubles
-            #('xi_work',double[:,:]),
 
             # misc
             ('tol',double),
@@ -188,6 +185,21 @@ class RetirementModelClass(ModelClass):
         self.par.Nxi = 8
         self.par.Na = 150
         self.par.poc = 10 # points on constraint
+
+        # tax system
+        self.par.tau_upper = 0.59
+        self.par.tau_LMC = 0.08
+        self.par.WD = 0.4
+        self.par.WD_upper = 12300/100000
+        self.par.tau_c = 0.2554
+        self.par.y_low = 41000/100000
+        self.par.y_low_m = 279800/100000
+        self.par.y_low_u = 335800/100000
+        self.par.tau_h = 0.08
+        self.par.tau_l = 0.0548
+        self.par.tau_m = 0.06
+        self.par.tau_u = 0.15
+        self.par.tau_max = self.par.tau_l + self.par.tau_m + self.par.tau_u + self.par.tau_c + self.par.tau_h - self.par.tau_upper
         
         # misc
         self.par.tol = 1e-8
@@ -296,7 +308,7 @@ class RetirementModelClass(ModelClass):
         self.sim.v_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))                     
 
         # b. initialize m and d
-        self.sim.m[0,:] = np.random.lognormal(np.log(25),1.2,self.par.simN) # initial m, lognormal dist
+        self.sim.m[0,:] = np.random.lognormal(np.log(5),1.2,self.par.simN) # initial m, lognormal dist
         #self.sim.m[0,:] = 10*np.ones(par.simN) # initial m        
         self.sim.d[0,:] = np.ones(self.par.simN)
 

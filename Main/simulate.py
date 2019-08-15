@@ -53,7 +53,7 @@ def lifecycle(sim,sol,par):
             
             # retired
             else:            
-                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,par)
+                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,np.array([a[t-1,i]]))
                 c[t,i] = linear_interp.interp_1d(sol.m[t,:,0],sol.c[t,:,0],m[t,i])
                 if (t < par.simT-1): # if not last period
                     d[t+1,i] = 0 # still retired                

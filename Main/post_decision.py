@@ -28,7 +28,7 @@ def compute_retired(t,sol,par):
     
     # a. next period ressources and value
     a = par.grid_a
-    m_plus = par.R*a + transitions.pension(t,par)
+    m_plus = par.R*a + transitions.pension(t,a)
 
     # b. interpolate       
     linear_interp.interp_1d_vec(m,c,m_plus,c_plus_retired_interp)
@@ -99,7 +99,7 @@ def value_of_choice_retired(t,m,c,sol,par):
 
     # a. next period ressources
     a = m-c
-    m_plus = par.R*a + transitions.pension(t,par)
+    m_plus = par.R*a + transitions.pension(t,a)
 
     # b. next period value
     linear_interp.interp_1d_vec(sol.m[t+1,:,0],sol.v[t+1,:,0],m_plus,v_plus_interp)
