@@ -45,7 +45,7 @@ def cons_time(model,t):
 
         plt.show()
 
-def cons_choice(model,t,choice='work'):
+def cons_choice(model,t,st,choice='work'):
     
     # a. unpack
     par = model.par
@@ -54,11 +54,11 @@ def cons_choice(model,t,choice='work'):
             
     # extract right variables
     if choice=='work':
-        m = sol.m[:,:,1]
-        c = sol.c[:,:,1]
+        m = sol.m[:,st,:,1]
+        c = sol.c[:,st,:,1]
     else:
-        m = sol.m[:,:,0]
-        c = sol.c[:,:,0]        
+        m = sol.m[:,st,:,0]
+        c = sol.c[:,st,:,0]        
             
     # convert to list
     if type(t) == int:

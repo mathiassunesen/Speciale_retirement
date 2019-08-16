@@ -18,37 +18,37 @@ def is_sorted(a): # fast implementation
     return True
 
 @njit(parallel=True)
-def solve_bellman_retired(t,sol,par):
+def solve_bellman_retired(t,st,sol,par):
     """solve the bellman equation using the endogenous grid method"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    c = sol.c[t,poc:,0] # leave/ignore points on constraint
-    m = sol.m[t,poc:,0]
-    v = sol.v[t,poc:,0]
-    q = sol.q[t,:,0]
-    v_plus_raw = sol.v_plus_raw[t,:,0]
+    c = sol.c[t,st,poc:,0] # leave/ignore points on constraint
+    m = sol.m[t,st,poc:,0]
+    v = sol.v[t,st,poc:,0]
+    q = sol.q[t,st,:,0]
+    v_plus_raw = sol.v_plus_raw[t,st,:,0]
     pi = transitions.survival(t,par)     
 
     # a. solution
     c[:] = utility.inv_marg_func(q,par)
     m[:] = par.grid_a + c
-    v[:] = utility.func(c,0,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)   
+    v[:] = utility.func(c,0,st,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)   
 
     # b. add points on constraint
-    points_on_constraint(t,0,sol,par)    
+    points_on_constraint(t,st,0,sol,par)    
 
 @njit(parallel=True)
-def solve_bellman_work(t,sol,par):
+def solve_bellman_work(t,st,sol,par):
     """solve the bellman equation using the endogenous grid method"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    c = sol.c[t,poc:] # ignore/leave points on constraint
-    m = sol.m[t,poc:]
-    v = sol.v[t,poc:]
-    q = sol.q[t]
-    v_plus_raw = sol.v_plus_raw[t]
+    c = sol.c[t,st,poc:] # ignore/leave points on constraint
+    m = sol.m[t,st,poc:]
+    v = sol.v[t,st,poc:]
+    q = sol.q[t,st]
+    v_plus_raw = sol.v_plus_raw[t,st]
     pi = transitions.survival(t,par)     
 
     # a. raw solution
@@ -56,11 +56,11 @@ def solve_bellman_work(t,sol,par):
         if id == 0: # retired
             c[:,id] = utility.inv_marg_func(q[:,id],par)
             m[:,id] = par.grid_a + c[:,id]
-            v[:,id] = utility.func(c[:,id],id,par) + par.beta*(pi*v_plus_raw[:,id] + (1-pi)*par.gamma*par.grid_a)
+            v[:,id] = utility.func(c[:,id],id,st,par) + par.beta*(pi*v_plus_raw[:,id] + (1-pi)*par.gamma*par.grid_a)
         else:
             c_raw = utility.inv_marg_func(q[:,id],par)
             m_raw = par.grid_a + c_raw
-            v_raw = utility.func(c_raw,id,par) + par.beta*(pi*v_plus_raw[:,id] + (1-pi)*par.gamma*par.grid_a)
+            v_raw = utility.func(c_raw,id,st,par) + par.beta*(pi*v_plus_raw[:,id] + (1-pi)*par.gamma*par.grid_a)
 
     # b. re-interpolate to common grid
     idx = np.argsort(m_raw)
@@ -77,20 +77,20 @@ def solve_bellman_work(t,sol,par):
                  1,par) # args for utility function
 
     # c. add points on constraint
-    points_on_constraint(t,0,sol,par)    
-    points_on_constraint(t,1,sol,par)
+    points_on_constraint(t,st,0,sol,par)    
+    points_on_constraint(t,st,1,sol,par)
 
     
 @njit(parallel=True)
-def points_on_constraint(t,d,sol,par):
+def points_on_constraint(t,st,d,sol,par):
     """add points on the constraint"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    low_c = sol.c[t,poc,d] # lowest point of the inner solution
-    c = sol.c[t,:poc,d] # only consider points on constraint
-    m = sol.m[t,:poc,d]
-    v = sol.v[t,:poc,d]
+    low_c = sol.c[t,st,poc,d] # lowest point of the inner solution
+    c = sol.c[t,st,:poc,d] # only consider points on constraint
+    m = sol.m[t,st,:poc,d]
+    v = sol.v[t,st,:poc,d]
 
     # add points on constraint
     if low_c > 1e-6:
@@ -100,7 +100,7 @@ def points_on_constraint(t,d,sol,par):
     m[:] = c[:]
     
     if d == 0:
-        v[:] = post_decision.value_of_choice_retired(t,m,c,sol,par)
+        v[:] = post_decision.value_of_choice_retired(t,st,m,c,sol,par)
     else:
-        v[:] = post_decision.value_of_choice_work(t,m,c,sol,par)
+        v[:] = post_decision.value_of_choice_work(t,st,m,c,sol,par)
 
