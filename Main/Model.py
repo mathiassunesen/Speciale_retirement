@@ -29,6 +29,7 @@ import egm
 import simulate
 import figs
 import funs
+import transitions
 
 ############
 # 2. model #
@@ -129,31 +130,17 @@ class RetirementModelClass(ModelClass):
         sollist = [ # (name, numba type), solution data
 
             # solution
-            ('c',double[:,:,:]),
-            ('m',double[:,:,:]),
-            ('v',double[:,:,:]),
-            ('c_60_61',double[:,:]),            
-            ('m_60_61',double[:,:]),
-            ('v_60_61',double[:,:]),
-            ('c_below60',double[:,:]),            
-            ('m_below60',double[:,:]),
-            ('v_below60',double[:,:]),              
+            ('c',double[:,:,:,:,:]),
+            ('m',double[:,:,:,:,:]),
+            ('v',double[:,:,:,:,:]),            
 
             # interpolation
-            ('c_plus_interp',double[:,:,:]),
-            ('v_plus_interp',double[:,:,:]),
-            ('c_interp_60_61',double[:,:,:]),
-            ('v_interp_60_61',double[:,:,:]),
-            ('c_interp_below60',double[:,:,:]),
-            ('v_interp_below60',double[:,:,:]),            
+            ('c_plus_interp',double[:,:,:,:,:]),
+            ('v_plus_interp',double[:,:,:,:,:]),           
             
             # post decision
-            ('q',double[:,:,:]),                    
-            ('v_plus_raw',double[:,:,:]),
-            ('q_60_61',double[:,:,:]),                    
-            ('v_plus_raw_60_61',double[:,:,:]),
-            ('q_below60',double[:,:,:]),                    
-            ('v_plus_raw_below60',double[:,:,:])                        
+            ('q',double[:,:,:,:,:]),                    
+            ('v_plus_raw',double[:,:,:,:,:])                       
         ]        
 
         simlist = [ # (name, numba type), simulation data       
@@ -168,6 +155,7 @@ class RetirementModelClass(ModelClass):
             # dummies and probabilities
             ('alive',double[:,:]), # dummy for alive
             ('probs',double[:,:]), # retirement probs
+            ('ret_age',double[:]), # retirement age
 
             # interpolation   
             ('c_interp',double[:,:,:]),
@@ -207,8 +195,8 @@ class RetirementModelClass(ModelClass):
         # preference parameters
         self.par.rho = 0.96
         self.par.beta = 0.98        
-        self.par.alpha_0_male = 0.160 # constant
-        self.par.alpha_0_female = 0.119 # constant
+        self.par.alpha_0_male = 0.160 + 0.08 # constant
+        self.par.alpha_0_female = 0.119 + 0.08 # constant
         self.par.alpha_1 = 0.053 # high skilled
         self.par.alpha_2 = -0.036 # children
         self.par.gamma = 0.08 # bequest motive
@@ -300,34 +288,17 @@ class RetirementModelClass(ModelClass):
         num_st = len(par.states)
 
         # solution
-        self.sol.c = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2))        
-        self.sol.m = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
-        self.sol.v = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
-
-        self.sol.c_60_61 = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2))        
-        self.sol.m_60_61 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
-        self.sol.v_60_61 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
-        self.sol.c_below60 = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2))        
-        self.sol.m_below60 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
-        self.sol.v_below60 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))                
+        self.sol.c = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2,3))        
+        self.sol.m = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2,3))
+        self.sol.v = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2,3))              
 
         # interpolation
-        self.sol.c_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.v_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2)) 
+        self.sol.c_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3))
+        self.sol.v_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3)) 
 
-        self.sol.c_plus_interp_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.v_plus_interp_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2)) 
-        self.sol.c_plus_interp_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.v_plus_interp_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))                              
-        
         # post decision        
-        self.sol.q = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.v_plus_raw = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-
-        self.sol.q_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.v_plus_raw_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.q_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.v_plus_raw_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))                
+        self.sol.q = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3))
+        self.sol.v_plus_raw = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3))
 
     def solve(self):
         """ solve the model """
@@ -349,17 +320,65 @@ class RetirementModelClass(ModelClass):
                     last_period.solve(t,st,sol,par)
 
                 ## ii. if forced to retire
-                elif t >= par.Tr-1:
+                elif t >= par.Tr-2:
 
-                    post_decision.compute_retired(t,st,sol,par)
-                    egm.solve_bellman_retired(t,st,sol,par)
+                    retirement = [0,0,0] # t+1 sol, retirement age, t sol
+                    post_decision.compute_retired(t,st,sol,par,retirement)
+                    egm.solve_bellman_retired(t,st,sol,par,retirement)
                 
                 # iii. all other periods
                 else:
-                
-                    post_decision.compute_retired(t,st,sol,par)
-                    post_decision.compute_work(t,st,sol,par)
-                    egm.solve_bellman_work(t,st,sol,par)
+
+                    if transitions.age(t+1) >= 65:
+                        retirement = [0,0,0]
+                        egm.all_egm(t,st,sol,par,retirement)
+                        
+                    elif transitions.age(t+1) == 64:
+                        retirement = [0,0,0]
+                        retirement_60_61 = [0,1,1]
+                        retirement_below60 = [0,2,2]
+                        egm.all_egm(t,st,sol,par,retirement)
+                        egm.all_egm(t,st,sol,par,retirement_60_61)
+                        egm.all_egm(t,st,sol,par,retirement_below60)                                                                        
+
+                    elif transitions.age(t+1) == 63:
+                        retirement = [0,0,0]
+                        retirement_60_61 = [1,1,1]
+                        retirement_below60 = [2,2,2]   
+                        egm.all_egm(t,st,sol,par,retirement)
+                        egm.all_egm(t,st,sol,par,retirement_60_61)
+                        egm.all_egm(t,st,sol,par,retirement_below60)                        
+                     
+                    elif transitions.age(t+1) == 62:
+                        retirement = [0,0,0]
+                        retirement_60_61 = [1,1,1]
+                        retirement_below60 = [2,2,2]   
+                        egm.all_egm(t,st,sol,par,retirement)
+                        egm.all_egm(t,st,sol,par,retirement_60_61)
+                        egm.all_egm(t,st,sol,par,retirement_below60)                        
+
+                    elif transitions.age(t+1) == 61:
+                        retirement = [1,1,0]
+                        retirement_below60 = [2,2,2]   
+                        egm.all_egm(t,st,sol,par,retirement)
+                        egm.all_egm(t,st,sol,par,retirement_below60)                        
+
+                    elif transitions.age(t+1) == 60:
+                        retirement = [0,1,0]
+                        retirement_below60 = [2,2,2]  
+                        egm.all_egm(t,st,sol,par,retirement)
+                        egm.all_egm(t,st,sol,par,retirement_below60)                         
+
+                    elif transitions.age(t+1) == 59:
+                        retirement = [2,2,0]
+                        egm.all_egm(t,st,sol,par,retirement)                        
+
+                    elif transitions.age(t+1) < 59:
+                        retirement = [0,2,0] 
+                        egm.all_egm(t,st,sol,par,retirement)                        
+
+                    
+                    
 
     ############
     # simulate #
@@ -380,13 +399,14 @@ class RetirementModelClass(ModelClass):
         # dummies and probabilities
         self.sim.alive = np.ones((par.simT,par.simN)) #dummy for alive
         self.sim.probs = np.zeros((par.simT,par.simN)) # retirement probs
+        self.sim.ret_age = np.nan*np.zeros(par.simN) # retirement age
 
         # interpolation
         self.sim.c_interp = np.nan*np.zeros((par.simT,par.simN,2))
         self.sim.v_interp = np.nan*np.zeros((par.simT,par.simN,2))    
 
         # b. initialize m and d
-        self.sim.m[0,:] = np.random.lognormal(np.log(5),1.2,self.par.simN) # initial m, lognormal dist
+        self.sim.m[0,:] = np.random.lognormal(np.log(2.5),1.2,self.par.simN) # initial m, lognormal dist
         #self.sim.m[0,:] = 10*np.ones(par.simN) # initial m        
         self.sim.d[0,:] = np.ones(self.par.simN)
 
@@ -433,4 +453,4 @@ from consav import runtools
 runtools.write_numba_config(disable=1,threads=8)
 model = RetirementModelClass(name='baseline',solmethod='egm')
 model.solve()
-model.simulate()
+#model.simulate()

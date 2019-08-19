@@ -13,8 +13,12 @@ def lifecycle(sim,sol,par):
     """ simulate full life-cycle """
 
     # unpack (to help numba optimize)
-
     # solution
+    c_sol = sol.c[:,:,:,:,0]
+    m_sol = sol.m[:,:,:,:,0]
+    v_sol = sol.v[:,:,:,:,0]        
+
+    # simulation
     c = sim.c
     m = sim.m
     a = sim.a
@@ -23,6 +27,7 @@ def lifecycle(sim,sol,par):
     # dummies and probabilities
     alive = sim.alive
     probs = sim.probs
+    ret_age = sim.ret_age
 
     # interpolation
     c_interp = sim.c_interp
@@ -54,14 +59,20 @@ def lifecycle(sim,sol,par):
 
                 # b.1 retirement and consumption choice
                 for id in range(2):
-                    c_interp[t,i,id] = linear_interp.interp_1d(sol.m[t,st[i],:,id],sol.c[t,st[i],:,id],m[t,i])
-                    v_interp[t,i,id] = linear_interp.interp_1d(sol.m[t,st[i],:,id],sol.v[t,st[i],:,id],m[t,i])
+                    c_interp[t,i,id] = linear_interp.interp_1d(m_sol[t,st[i],:,id],c_sol[t,st[i],:,id],m[t,i])
+                    v_interp[t,i,id] = linear_interp.interp_1d(m_sol[t,st[i],:,id],v_sol[t,st[i],:,id],m[t,i])
                 
                 prob = funs.logsum_vec(v_interp[t,i,:],par)[1]
                 probs[t+1,i] = prob[0,0] # save the retirement probability
             
                 if (prob[0,0] > unif[t,i]): # if prob of retiring exceeds threshold
                     d[t+1,i] = 0 # retire
+                    if transitions.age(t+1) >= 62:
+                        ret_age[i] = 0
+                    elif 60 <= transitions.age(t+1) <= 61:
+                        ret_age[i] = 1
+                    else:
+                        ret_age[i] = 2
                     c[t,i] = c_interp[t,i,0]
                 else:
                     d[t+1,i] = 1 # work
@@ -69,8 +80,8 @@ def lifecycle(sim,sol,par):
             
             # c. retired
             else:            
-                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,st[i],np.array([a[t-1,i]]))
-                c[t,i] = linear_interp.interp_1d(sol.m[t,st[i],:,0],sol.c[t,st[i],:,0],m[t,i])
+                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,st[i],np.array([a[t-1,i]]),ret_age[i])
+                c[t,i] = linear_interp.interp_1d(m_sol[t,st[i],:,0],c_sol[t,st[i],:,0],m[t,i])
                 if (t < par.simT-1): # if not last period
                     d[t+1,i] = 0 # still retired                
                     probs[t+1,i] = 0 # set retirement probability to 0 if already retired

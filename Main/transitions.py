@@ -31,19 +31,22 @@ def oap(t): # folkepension
     return 61152 + 61560
 
 @njit(parallel=True)
-def pension(t,st,a,two_year): # efterløn
+def pension(t,st,a,retirement): # efterløn
 
     p = np.zeros_like(a)
 
     if age(t) >= 65:
         p[:] = oap(t)
+    
     else:
-        if two_year == 0:
+        if retirement == 0: # two year rule
+            p[:] = 182780  
+        elif retirement == 1: # no two year rule
             priv = priv_pension(t,st,a)
             for i in prange(len(priv)):
                 p[i] = max(0,166400 - 0.6*0.05*max(0,priv[i] - 12600))
-        elif two_year == 1:
-            p[:] = 182780          
+        elif retirement == 2: # no erp
+            pass        
     
     return p/100000
 

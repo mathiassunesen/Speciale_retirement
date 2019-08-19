@@ -9,9 +9,9 @@ def solve(t,st,sol,par):
     """ solve the problem in the last period """
 
     # unpack (helps numba optimize)
-    m = sol.m[t,st,:,0]
-    v = sol.v[t,st,:,0]
-    c = sol.c[t,st,:,0]
+    m = sol.m[t,st,:,0,0]
+    v = sol.v[t,st,:,0,0]
+    c = sol.c[t,st,:,0,0]
 
     # initialize
     m[:] = np.linspace(1e-6,par.a_max,par.Na+par.poc)
