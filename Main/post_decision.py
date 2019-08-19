@@ -27,19 +27,94 @@ def compute_retired(t,st,sol,par):
     
     # a. next period ressources and value
     a = par.grid_a
-    m_plus = par.R*a + transitions.pension(t,st,a)
+    #m_plus_main = par.R*a + transitions.pension(t,st,a) # if above 61 (two year rule)
+    pi = transitions.survival(t,par)
+
+    if transitions.age(t) >= 65:
+        m_plus_main = par.R*a + transitions.pension(t,st,a,two_year=1) # oap
+        linear_interp.interp_1d_vec(m,c,m_plus_main,c_plus_interp)
+        linear_interp.interp_1d_vec(m,v,m_plus_main,v_plus_interp)    
+        marg_u_plus = utility.marg_func(c_plus_interp,par) 
+        v_plus_raw[:] = v_plus_interp
+        q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma)         
+
+    elif 62 <= transitions.age(t) <= 64:
+        m_plus_main = par.R*a + transitions.pension(t,st,a,two_year=1) # two-year rule satisfied
+        linear_interp.interp_1d_vec(m,c,m_plus_main,c_plus_interp)
+        linear_interp.interp_1d_vec(m,v,m_plus_main,v_plus_interp)     
+        marg_u_plus = utility.marg_func(c_plus_interp,par) 
+        v_plus_raw[:] = v_plus_interp
+        q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma)               
+
+        c_60_61 = sol.c_60_61[t+1,st,:,0]
+        m_60_61 = sol.m_60_61[t+1,st,:,0]
+        v_60_61 = sol.v_60_61[t+1,st,:,0]
+        c_plus_interp_60_61 = sol.c_plus_interp_60_61[t,st,:,0]
+        v_plus_interp_60_61 = sol.v_plus_interp_60_61[t,st,:,0]  
+        q_60_61 = sol.q_60_61[t,st,:,0]
+        v_plus_raw_60_61 = sol.v_plus_raw_60_61[t,st,:,0]        
+        m_plus_60_61 = par.R*a + transitions.pension(t,st,a,two_year=0) # two-year rule not satisfied
+        linear_interp.interp_1d_vec(m_60_61,c_60_61,m_plus_60_61,c_plus_interp_60_61)
+        linear_interp.interp_1d_vec(m_60_61,v_60_61,m_plus_60_61,v_plus_interp_60_61)             
+        marg_u_plus_60_61 = utility.marg_func(c_plus_interp_60_61,par)
+        v_plus_raw_60_61[:] = v_plus_interp_60_61
+        q_60_61[:] = par.beta*(par.R*pi*marg_u_plus_60_61 + (1-pi)*par.gamma)                
+        
+        c_below60 = sol.c_below60[t+1,st,:,0]
+        m_below60 = sol.m_below60[t+1,st,:,0]
+        v_below60 = sol.v_below60[t+1,st,:,0]
+        c_plus_interp_below60 = sol.c_plus_interp_below60[t,st,:,0]
+        v_plus_interp_below60 = sol.v_plus_interp_below60[t,st,:,0]  
+        q_below60 = sol.q_below60[t,st,:,0]
+        v_plus_raw_below60 = sol.v_plus_raw_below60[t,st,:,0]        
+        m_plus_below60 = par.R*a # no erp
+        linear_interp.interp_1d_vec(m_below60,c_below60,m_plus_below60,c_plus_interp_below60)
+        linear_interp.interp_1d_vec(m_below60,v_below60,m_plus_below60,v_plus_interp_below60)
+        marg_u_plus_below60 = utility.marg_func(c_plus_interp_below60,par)                     
+        v_plus_raw_below60[:] = v_plus_interp_below60
+        q_below60[:] = par.beta*(par.R*pi*marg_u_plus_below60 + (1-pi)*par.gamma)        
+
+    elif 60 <= transitions.age(t) <= 61:
+        m_plus_main = par.R*a + transitions.pension(t,st,a,two_year=0) # two-year rule not satisfied
+        linear_interp.interp_1d_vec(m,c,m_plus_main,c_plus_interp)
+        linear_interp.interp_1d_vec(m,v,m_plus_main,v_plus_interp) 
+        marg_u_plus = utility.marg_func(c_plus_interp,par)   
+        v_plus_raw[:] = v_plus_interp
+        q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma)                 
+
+        c_below60 = sol.c_below60[t+1,st,:,0]
+        m_below60 = sol.m_below60[t+1,st,:,0]
+        v_below60 = sol.v_below60[t+1,st,:,0]
+        c_plus_interp_below60 = sol.c_plus_interp_below60[t,st,:,0]
+        v_plus_interp_below60 = sol.v_plus_interp_below60[t,st,:,0]  
+        q_below60 = sol.q_below60[t,st,:,0]
+        v_plus_raw_below60 = sol.v_plus_raw_below60[t,st,:,0]
+        m_plus_below60 = par.R*a # no erp
+        linear_interp.interp_1d_vec(m_below60,c_below60,m_plus_below60,c_plus_interp_below60)
+        linear_interp.interp_1d_vec(m_below60,v_below60,m_plus_below60,v_plus_interp_below60)
+        marg_u_plus_below60 = utility.marg_func(c_plus_interp_below60,par)  
+        v_plus_raw_below60[:] = v_plus_interp_below60
+        q_below60[:] = par.beta*(par.R*pi*marg_u_plus_below60 + (1-pi)*par.gamma)                           
+
+    else:
+        m_plus_main = par.R*a # no erp                        
+        linear_interp.interp_1d_vec(m,c,m_plus_main,c_plus_interp)
+        linear_interp.interp_1d_vec(m,v,m_plus_main,v_plus_interp)             
+        marg_u_plus = utility.marg_func(c_plus_interp,par)   
+        v_plus_raw[:] = v_plus_interp
+        q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma)             
 
     # b. interpolate       
-    linear_interp.interp_1d_vec(m,c,m_plus,c_plus_interp)
-    linear_interp.interp_1d_vec(m,v,m_plus,v_plus_interp)     
+    #linear_interp.interp_1d_vec(m,c,m_plus_main,c_plus_interp)
+    #linear_interp.interp_1d_vec(m,v,m_plus_main,v_plus_interp)     
 
     # c. next period marginal utility
-    marg_u_plus = utility.marg_func(c_plus_interp,par)
+    #marg_u_plus = utility.marg_func(c_plus_interp,par)
 
     # d. store results
-    pi = transitions.survival(t,par)
-    v_plus_raw[:] = v_plus_interp
-    q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma) 
+    #pi = transitions.survival(t,par)
+    #v_plus_raw[:] = v_plus_interp
+    #q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma) 
 
 
 @njit(parallel=True)
@@ -98,7 +173,7 @@ def value_of_choice_retired(t,st,m,c,sol,par):
 
     # a. next period ressources
     a = m-c
-    m_plus = par.R*a + transitions.pension(t,st,a)
+    m_plus = par.R*a + transitions.pension(t,st,a,two_year=1)
 
     # b. next period value
     linear_interp.interp_1d_vec(sol.m[t+1,st,:,0],sol.v[t+1,st,:,0],m_plus,v_plus_interp)
@@ -108,6 +183,45 @@ def value_of_choice_retired(t,st,m,c,sol,par):
     v = utility.func(c,0,st,par) + par.beta*(pi*v_plus_interp + (1-pi)*par.gamma*a)
     return v
 
+@njit(parallel=True)
+def value_of_choice_retired_60_61(t,st,m,c,sol,par):
+    """compute the value-of-choice"""
+    
+    # initialize
+    poc = par.poc
+    v_plus_interp = np.nan*np.zeros(poc)
+
+    # a. next period ressources
+    a = m-c
+    m_plus = par.R*a + transitions.pension(t,st,a,two_year=0)
+
+    # b. next period value
+    linear_interp.interp_1d_vec(sol.m_60_61[t+1,st,:,0],sol.v_60_61[t+1,st,:,0],m_plus,v_plus_interp)
+    
+    # c. value-of-choice
+    pi = transitions.survival(t,par)
+    v = utility.func(c,0,st,par) + par.beta*(pi*v_plus_interp + (1-pi)*par.gamma*a)
+    return v
+
+@njit(parallel=True)
+def value_of_choice_retired_below60(t,st,m,c,sol,par):
+    """compute the value-of-choice"""
+    
+    # initialize
+    poc = par.poc
+    v_plus_interp = np.nan*np.zeros(poc)
+
+    # a. next period ressources
+    a = m-c
+    m_plus = par.R*a
+
+    # b. next period value
+    linear_interp.interp_1d_vec(sol.m_below60[t+1,st,:,0],sol.v_below60[t+1,st,:,0],m_plus,v_plus_interp)
+    
+    # c. value-of-choice
+    pi = transitions.survival(t,par)
+    v = utility.func(c,0,st,par) + par.beta*(pi*v_plus_interp + (1-pi)*par.gamma*a)
+    return v    
 
 @njit(parallel=True)
 def value_of_choice_work(t,st,m,c,sol,par):

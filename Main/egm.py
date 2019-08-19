@@ -80,6 +80,44 @@ def solve_bellman_work(t,st,sol,par):
     points_on_constraint(t,st,0,sol,par)    
     points_on_constraint(t,st,1,sol,par)
 
+    #for id in prange(2):
+    #    points_on_constraint(t,st,id,sol,par)  
+
+    if 62 <= transitions.age(t) <= 64:
+        # unpack (helps numba optimize)
+        poc = par.poc # points on constraint
+        c_60_61 = sol.c_60_61[t,st,poc:] # ignore/leave points on constraint
+        m_60_61 = sol.m_60_61[t,st,poc:]
+        v_60_61 = sol.v_60_61[t,st,poc:]
+        q_60_61 = sol.q_below60[t,st]
+        v_plus_raw_60_61 = sol.v_plus_raw_60_61[t,st]
+        pi = transitions.survival(t,par)     
+
+        # a. raw solution
+        c_60_61[:,0] = utility.inv_marg_func(q_60_61[:,0],par)
+        m_60_61[:,0] = par.grid_a + c_60_61[:,0]
+        v_60_61[:,0] = utility.func(c_60_61[:,0],0,st,par) + par.beta*(pi*v_plus_raw_60_61[:,0] + (1-pi)*par.gamma*par.grid_a)
+
+        # c. add points on constraint
+        points_on_constraint_60_61(t,st,0,sol,par)
+
+    if 60 <= transitions.age(t) <= 64:
+        # unpack (helps numba optimize)
+        poc = par.poc # points on constraint
+        c_below60 = sol.c_below60[t,st,poc:] # ignore/leave points on constraint
+        m_below60 = sol.m_below60[t,st,poc:]
+        v_below60 = sol.v_below60[t,st,poc:]
+        q_below60 = sol.q_below60[t,st]
+        v_plus_raw_below60 = sol.v_plus_raw_below60[t,st]
+        pi = transitions.survival(t,par)     
+
+        # a. raw solution
+        c_below60[:,0] = utility.inv_marg_func(q_below60[:,0],par)
+        m_below60[:,0] = par.grid_a + c_below60[:,0]
+        v_below60[:,0] = utility.func(c_below60[:,0],0,st,par) + par.beta*(pi*v_plus_raw_below60[:,0] + (1-pi)*par.gamma*par.grid_a)
+
+        # c. add points on constraint
+        points_on_constraint_below60(t,st,0,sol,par)    
     
 @njit(parallel=True)
 def points_on_constraint(t,st,d,sol,par):
@@ -104,3 +142,48 @@ def points_on_constraint(t,st,d,sol,par):
     else:
         v[:] = post_decision.value_of_choice_work(t,st,m,c,sol,par)
 
+@njit(parallel=True)
+def points_on_constraint_60_61(t,st,d,sol,par):
+    """add points on the constraint"""
+
+    # unpack (helps numba optimize)
+    poc = par.poc # points on constraint
+    low_c = sol.c_60_61[t,st,poc,d] # lowest point of the inner solution
+    c = sol.c_60_61[t,st,:poc,d] # only consider points on constraint
+    m = sol.m_60_61[t,st,:poc,d]
+    v = sol.v_60_61[t,st,:poc,d]
+
+    # add points on constraint
+    if low_c > 1e-6:
+        c[:] = np.linspace(1e-6,low_c-1e-6,poc)
+    else:
+        c[:] = np.linspace(low_c/3,low_c/2,poc)
+    m[:] = c[:]
+    
+    if d == 0:
+        v[:] = post_decision.value_of_choice_retired_60_61(t,st,m,c,sol,par)
+    else:
+        v[:] = post_decision.value_of_choice_work(t,st,m,c,sol,par)
+
+@njit(parallel=True)
+def points_on_constraint_below60(t,st,d,sol,par):
+    """add points on the constraint"""
+
+    # unpack (helps numba optimize)
+    poc = par.poc # points on constraint
+    low_c = sol.c_below60[t,st,poc,d] # lowest point of the inner solution
+    c = sol.c_below60[t,st,:poc,d] # only consider points on constraint
+    m = sol.m_below60[t,st,:poc,d]
+    v = sol.v_below60[t,st,:poc,d]
+
+    # add points on constraint
+    if low_c > 1e-6:
+        c[:] = np.linspace(1e-6,low_c-1e-6,poc)
+    else:
+        c[:] = np.linspace(low_c/3,low_c/2,poc)
+    m[:] = c[:]
+    
+    if d == 0:
+        v[:] = post_decision.value_of_choice_retired_below60(t,st,m,c,sol,par)
+    else:
+        v[:] = post_decision.value_of_choice_work(t,st,m,c,sol,par)        

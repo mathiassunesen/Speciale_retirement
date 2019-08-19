@@ -57,11 +57,10 @@ def lifecycle(sim,sol,par):
                     c_interp[t,i,id] = linear_interp.interp_1d(sol.m[t,st[i],:,id],sol.c[t,st[i],:,id],m[t,i])
                     v_interp[t,i,id] = linear_interp.interp_1d(sol.m[t,st[i],:,id],sol.v[t,st[i],:,id],m[t,i])
                 
-                prob = funs.logsum_vec(v_interp[t,i,:].reshape(1,2),par)[1]
-                prob = prob[0] # unpack it. this is strange!!!
-                probs[t+1,i] = prob[0] # save the retirement probability
+                prob = funs.logsum_vec(v_interp[t,i,:],par)[1]
+                probs[t+1,i] = prob[0,0] # save the retirement probability
             
-                if (prob[0] > unif[t,i]): # if prob of retiring exceeds threshold
+                if (prob[0,0] > unif[t,i]): # if prob of retiring exceeds threshold
                     d[t+1,i] = 0 # retire
                     c[t,i] = c_interp[t,i,0]
                 else:

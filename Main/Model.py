@@ -132,14 +132,28 @@ class RetirementModelClass(ModelClass):
             ('c',double[:,:,:]),
             ('m',double[:,:,:]),
             ('v',double[:,:,:]),
+            ('c_60_61',double[:,:]),            
+            ('m_60_61',double[:,:]),
+            ('v_60_61',double[:,:]),
+            ('c_below60',double[:,:]),            
+            ('m_below60',double[:,:]),
+            ('v_below60',double[:,:]),              
 
             # interpolation
             ('c_plus_interp',double[:,:,:]),
             ('v_plus_interp',double[:,:,:]),
+            ('c_interp_60_61',double[:,:,:]),
+            ('v_interp_60_61',double[:,:,:]),
+            ('c_interp_below60',double[:,:,:]),
+            ('v_interp_below60',double[:,:,:]),            
             
             # post decision
-            ('q',double[:,:,:]),
-            ('v_plus_raw',double[:,:,:])
+            ('q',double[:,:,:]),                    
+            ('v_plus_raw',double[:,:,:]),
+            ('q_60_61',double[:,:,:]),                    
+            ('v_plus_raw_60_61',double[:,:,:]),
+            ('q_below60',double[:,:,:]),                    
+            ('v_plus_raw_below60',double[:,:,:])                        
         ]        
 
         simlist = [ # (name, numba type), simulation data       
@@ -147,7 +161,7 @@ class RetirementModelClass(ModelClass):
             # solution
             ('c',double[:,:]),            
             ('m',double[:,:]),
-            ('v',double[:,:]),
+            ('v',double[:,:]),                      
             ('a',double[:,:]),
             ('d',double[:,:]), # retirement choice
 
@@ -157,7 +171,7 @@ class RetirementModelClass(ModelClass):
 
             # interpolation   
             ('c_interp',double[:,:,:]),
-            ('v_interp',double[:,:,:]),
+            ('v_interp',double[:,:,:]),                        
 
             # random shocks
             ('unif',double[:,:]),
@@ -290,13 +304,30 @@ class RetirementModelClass(ModelClass):
         self.sol.m = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
         self.sol.v = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
 
+        self.sol.c_60_61 = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2))        
+        self.sol.m_60_61 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
+        self.sol.v_60_61 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
+        self.sol.c_below60 = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2))        
+        self.sol.m_below60 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))
+        self.sol.v_below60 = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2))                
+
         # interpolation
         self.sol.c_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
-        self.sol.v_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2))              
+        self.sol.v_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2)) 
+
+        self.sol.c_plus_interp_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
+        self.sol.v_plus_interp_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2)) 
+        self.sol.c_plus_interp_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
+        self.sol.v_plus_interp_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))                              
         
         # post decision        
         self.sol.q = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
         self.sol.v_plus_raw = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
+
+        self.sol.q_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
+        self.sol.v_plus_raw_60_61 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
+        self.sol.q_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))
+        self.sol.v_plus_raw_below60 = np.nan*np.zeros((par.T-1,num_st,par.Na,2))                
 
     def solve(self):
         """ solve the model """
@@ -340,8 +371,6 @@ class RetirementModelClass(ModelClass):
         # prep
         par = self.par
 
-        # a. allocate
-
         # solution
         self.sim.c = np.nan*np.zeros((par.simT,par.simN))
         self.sim.m = np.nan*np.zeros((par.simT,par.simN))
@@ -377,6 +406,26 @@ class RetirementModelClass(ModelClass):
         # b. simulate
         self.par.simT = self.par.T
         simulate.lifecycle(self.sim,self.sol,self.par)
+
+
+    def test(self):
+        """ method for specifying test """
+        
+        # a. save print status
+        do_print = self.par.do_print
+        self.par.do_print = False
+
+        # b. test run
+        self.solve()
+
+        # c. timed run
+        tic = time.time()  
+        self.solve()
+        toc = time.time()
+        print(f'solution time: {toc-tic:.1f} secs')
+
+        # d. reset print status
+        self.par.do_print = do_print        
 
 
 #to debug code

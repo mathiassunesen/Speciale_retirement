@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
 def GaussHermite(n):
     return np.polynomial.hermite.hermgauss(n)
@@ -29,7 +29,7 @@ def logsum(v1, v2, sigma):
 
     else:
         log_sum = mxm
-        prob = np.zeros_like(V)
+        prob = np.zeros(V.shape)
         prob[np.arange(len(V)), np.argmax(V, axis=1)] = 1
 
     return log_sum,prob
@@ -39,8 +39,11 @@ def logsum_vec(V, par): # supports only 2 columns in order to be implemented in 
     
     # 1. setup
     sigma = par.sigma_eta
-    cols = V.shape[1]
-    
+    if len(V.shape) == 1: # to be compatible with simulate
+        V = V.reshape(1,2)
+
+    cols = V.shape[1] # just equal to 2
+
     # 2. maximum over the discrete choices
     mxm = np.maximum(V[:,0], V[:,1]).reshape(len(V),1)
 
@@ -52,8 +55,8 @@ def logsum_vec(V, par): # supports only 2 columns in order to be implemented in 
 
     else:
         logsum = mxm
-        prob = np.zeros_like(V)
-        for i in range(len(V)):
+        prob = np.zeros(V.shape)
+        for i in prange(len(V)):
             if V[i,0] > V[i,1]:
                 prob[i,0] = 1
             else:
