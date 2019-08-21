@@ -132,7 +132,9 @@ def lifecycle(model,vars=['m','c','a'],ages=[57,68]):
     x = np.arange(ages[0], ages[1]+1)
     for i in vars:
         simdata = getattr(sim,i)[transitions.inv_age(x)]
-        ax.plot(x,np.nanmean(simdata,axis=1),lw=2,label=simvardict[i])
+        with warnings.catch_warnings(): # ignore this specific warning
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            ax.plot(x,np.nanmean(simdata,axis=1),lw=2,label=simvardict[i])
     
     ax.legend()
     ax.grid(True)    
@@ -149,7 +151,7 @@ def retirement_probs(model,ages=[57,68]):
     sim = model.sim
     
     # b. figure
-    fig, ax = plt.subplots()
+    f, ax = plt.subplots()
     #ax = fig.add_subplot(1,1,1)
     avg_probs = np.zeros(ages[1] - ages[0]+1)
     for t in range(len(avg_probs)):
@@ -163,6 +165,8 @@ def retirement_probs(model,ages=[57,68]):
     ax.set_ylim(top=0.35)
     ax.set_xlabel('Age')
     ax.set_ylabel('Retirement probability')
+
+    return ax
         
 
     
