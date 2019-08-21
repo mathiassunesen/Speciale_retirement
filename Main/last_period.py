@@ -5,17 +5,17 @@ import numpy as np
 import utility
 
 @njit(parallel=True)
-def solve(t,sol,par):
+def solve(t,st,sol,par):
     """ solve the problem in the last period """
 
     # unpack (helps numba optimize)
-    m = sol.m[t,:,0] # leave/ignore first poc points
-    v = sol.v[t,:,0]
-    c = sol.c[t,:,0]
+    m = sol.m[t,st,:,0,0]
+    v = sol.v[t,st,:,0,0]
+    c = sol.c[t,st,:,0,0]
 
     # initialize
-    m[:] = np.linspace(1e-6,par.a_max,par.Na+par.poc) # important to do m[:] and not just m (otherwise sol.m[t,:,0] doesn't update)
-    c[:] = np.linspace(1e-6,par.a_max,par.Na+par.poc)
+    m[:] = np.linspace(1e-6,par.a_max,par.Na+par.poc)
+    c[:] = m[:]
     
     # optimal choice
     cons = (par.beta*par.gamma)**(-1/par.rho)
@@ -32,7 +32,7 @@ def solve(t,sol,par):
     #            break
     
     # optimal value
-    v[:] = utility.func(c,0,par) + par.beta*par.gamma*(m-c)
+    v[:] = utility.func(c,0,st,par) + par.beta*par.gamma*(m-c)
 
 
 

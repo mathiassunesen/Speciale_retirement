@@ -18,79 +18,71 @@ def is_sorted(a): # fast implementation
     return True
 
 @njit(parallel=True)
-def solve_bellman_retired(t,sol,par):
+def solve_bellman_retired(t,st,sol,par,retirement):
     """solve the bellman equation using the endogenous grid method"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    c = sol.c[t,poc:,0] # leave/ignore points on constraint
-    m = sol.m[t,poc:,0]
-    v = sol.v[t,poc:,0]
-    q = sol.q[t,:,0]
-    v_plus_raw = sol.v_plus_raw[t,:,0]
-    pi = transitions.survival(t,par)     
+    c = sol.c[t,st,poc:,0,retirement[2]] # leave/ignore points on constraint
+    m = sol.m[t,st,poc:,0,retirement[2]]
+    v = sol.v[t,st,poc:,0,retirement[2]]
+    q = sol.q[t,st,:,0,retirement[2]]
+    v_plus_raw = sol.v_plus_raw[t,st,:,0,retirement[2]]
+    pi = transitions.survival(t,st,par)     
 
     # a. solution
     c[:] = utility.inv_marg_func(q,par)
     m[:] = par.grid_a + c
-    v[:] = utility.func(c,0,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)   
+    v[:] = utility.func(c,0,st,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)   
 
     # b. add points on constraint
-    points_on_constraint(t,0,sol,par)    
+    points_on_constraint(t,st,0,sol,par,retirement)    
 
 @njit(parallel=True)
-def solve_bellman_work(t,sol,par):
+def solve_bellman_work(t,st,sol,par):
     """solve the bellman equation using the endogenous grid method"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    c = sol.c[t,poc:] # ignore/leave points on constraint
-    m = sol.m[t,poc:]
-    v = sol.v[t,poc:]
-    q = sol.q[t]
-    v_plus_raw = sol.v_plus_raw[t]
-    pi = transitions.survival(t,par)     
+    c = sol.c[t,st,poc:,1,0] # ignore/leave points on constraint
+    m = sol.m[t,st,poc:,1,0]
+    v = sol.v[t,st,poc:,1,0]
+    q = sol.q[t,st,:,1,0]
+    v_plus_raw = sol.v_plus_raw[t,st,:,1,0]
+    pi = transitions.survival(t,st,par)     
 
     # a. raw solution
-    for id in prange(2): # in parallel
-        if id == 0: # retired
-            c[:,id] = utility.inv_marg_func(q[:,id],par)
-            m[:,id] = par.grid_a + c[:,id]
-            v[:,id] = utility.func(c[:,id],id,par) + par.beta*(pi*v_plus_raw[:,id] + (1-pi)*par.gamma*par.grid_a)
-        else:
-            c_raw = utility.inv_marg_func(q[:,id],par)
-            m_raw = par.grid_a + c_raw
-            v_raw = utility.func(c_raw,id,par) + par.beta*(pi*v_plus_raw[:,id] + (1-pi)*par.gamma*par.grid_a)
+    c_raw = utility.inv_marg_func(q,par)
+    m_raw = par.grid_a + c_raw
+    v_raw = utility.func(c_raw,1,st,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)
 
     # b. re-interpolate to common grid
     idx = np.argsort(m_raw)
-    m[:,1] = m_raw[idx]
+    m[:] = m_raw[idx]
 
     if is_sorted(idx): # no need for upper envelope
-        c[:,1] = c_raw
-        v[:,1] = v_raw
+        c[:] = c_raw
+        v[:] = v_raw
     else:
         print('envelope')
         envelope = upperenvelope.create(utility.func)
-        envelope(par.grid_a,m_raw,c_raw,v_raw,m[:,1], # input
-                 c[:,1],v[:,1], # output
+        envelope(par.grid_a,m_raw,c_raw,v_raw,m, # input
+                 c,v, # output
                  1,par) # args for utility function
 
-    # c. add points on constraint
-    points_on_constraint(t,0,sol,par)    
-    points_on_constraint(t,1,sol,par)
-
+    # c. add points on constraint 
+    points_on_constraint(t,st,1,sol,par,[0,0,0])
     
 @njit(parallel=True)
-def points_on_constraint(t,d,sol,par):
+def points_on_constraint(t,st,d,sol,par,retirement):
     """add points on the constraint"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    low_c = sol.c[t,poc,d] # lowest point of the inner solution
-    c = sol.c[t,:poc,d] # only consider points on constraint
-    m = sol.m[t,:poc,d]
-    v = sol.v[t,:poc,d]
+    low_c = sol.c[t,st,poc,d,retirement[2]] # lowest point of the inner solution
+    c = sol.c[t,st,:poc,d,retirement[2]] # only consider points on constraint
+    m = sol.m[t,st,:poc,d,retirement[2]]
+    v = sol.v[t,st,:poc,d,retirement[2]]
 
     # add points on constraint
     if low_c > 1e-6:
@@ -100,7 +92,16 @@ def points_on_constraint(t,d,sol,par):
     m[:] = c[:]
     
     if d == 0:
-        v[:] = post_decision.value_of_choice_retired(t,m,c,sol,par)
+        v[:] = post_decision.value_of_choice_retired(t,st,m,c,sol,par,retirement)
     else:
-        v[:] = post_decision.value_of_choice_work(t,m,c,sol,par)
+        v[:] = post_decision.value_of_choice_work(t,st,m,c,sol,par)
 
+
+@njit(parallel=True)
+def all_egm(t,st,sol,par,retirement):
+    """run all functions"""
+
+    post_decision.compute_retired(t,st,sol,par,retirement)
+    solve_bellman_retired(t,st,sol,par,retirement)  
+    post_decision.compute_work(t,st,sol,par)                    
+    solve_bellman_work(t,st,sol,par)   

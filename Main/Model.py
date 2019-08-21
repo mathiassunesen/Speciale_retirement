@@ -15,6 +15,7 @@ yaml.warnings({'YAMLLoadWarning': False})
 import time
 import numpy as np
 from numba import boolean, int32, double
+import itertools
 
 # consav package
 from consav import linear_interp # for linear interpolation
@@ -29,6 +30,7 @@ import egm
 import simulate
 import figs
 import funs
+import transitions
 
 ############
 # 2. model #
@@ -68,29 +70,55 @@ class RetirementModelClass(ModelClass):
         # a. define subclasses
         parlist = [ # (name,numba type), parameters, grids etc.
             
-            # parameters
-            ('T',int32), # integer 32bit
-            ('Tr',int32),
-            ('rho',double), # double
+            # time parameters
+            ('T',int32),
+            ('Tr',int32), # forced retirement
+            
+            # preference parameters
+            ('rho',double), 
             ('beta',double),
-            ('alpha',double),
-            ('gamma',double),
-            ('sigma_eta',double),
-            ('sigma_xi',double),            
-            ('R',double),
-            ('a_max',int32),
-            ('a_phi',int32),
-            ('Nxi',int32),
-            ('Na',int32),
-            ('poc',int32),
+            ('alpha_0_male',double), # leisure
+            ('alpha_0_female',double),
+            ('alpha_1',double),
+            ('alpha_2',double),
+            ('gamma',double), # bequest motive
 
+            # uncertainty/variance parameters
+            ('sigma_eta',double), # taste shock
+            #('sigma_xi',double),            
+
+            # savings
+            ('R',double), # interest rate
+            
             # grids            
-            ('grid_a',double[:]), # 1d array of doubles    
-            ('xi',double[:]),        
+            ('grid_a',double[:]),     
+            ('a_max',int32), # a_grid
+            ('a_phi',int32),
+            ('Na',int32),
+            ('poc',int32), 
+            #('Nxi',int32), GH-points
+            
+            # states
+            ('states',double[:]),
+
+            # tax system
+            ('tau_upper',double),
+            ('tau_LMC',double),
+            ('WD',double),
+            ('WD_upper',double),
+            ('tau_c',double),
+            ('y_low',double),
+            ('y_low_m',double),
+            ('y_low_u',double),
+            ('tau_h',double),
+            ('tau_l',double),
+            ('tau_m',double),
+            ('tau_u',double),
+            ('tau_max',double),                                                                                                
 
             # misc
             ('tol',double),
-            ('do_print',boolean), # boolean
+            ('do_print',boolean),
             ('do_simple_w',boolean),
             ('cppthreads',int32),
             
@@ -101,31 +129,45 @@ class RetirementModelClass(ModelClass):
         ]
         
         sollist = [ # (name, numba type), solution data
-            ('c',double[:,:,:]), # 3d array of doubles
-            ('m',double[:,:,:]),
-            ('v',double[:,:,:]),
-            ('v_plus',double[:,:,:]),
-            ('c_plus_interp',double[:,:,:]),
-            ('v_plus_interp',double[:,:,:]),
-            ('c_plus_retired_interp',double[:,:]), # 2d array of doubles
-            ('v_plus_retired_interp',double[:,:]),
-            ('q',double[:,:,:]),
-            ('v_plus_raw',double[:,:,:])
+
+            # solution
+            ('c',double[:,:,:,:,:]),
+            ('m',double[:,:,:,:,:]),
+            ('v',double[:,:,:,:,:]),            
+
+            # interpolation
+            ('c_plus_interp',double[:,:,:,:,:]),
+            ('v_plus_interp',double[:,:,:,:,:]),           
+            
+            # post decision
+            ('q',double[:,:,:,:,:]),                    
+            ('v_plus_raw',double[:,:,:,:,:])                       
         ]        
 
-        simlist = [ # (name, numba type), simulation data
-            ('p',double[:,:]),
+        simlist = [ # (name, numba type), simulation data       
+
+            # solution
+            ('c',double[:,:]),            
             ('m',double[:,:]),
-            ('c',double[:,:]),
-            ('v',double[:,:]),
+            ('v',double[:,:]),                      
             ('a',double[:,:]),
-            ('d',double[:,:]),
-            ('alive',double[:,:]),
+            ('d',double[:,:]), # retirement choice
+
+            # dummies and probabilities
+            ('alive',double[:,:]), # dummy for alive
+            ('probs',double[:,:]), # retirement probs
+            ('ret_age',double[:]), # retirement age
+
+            # interpolation   
             ('c_interp',double[:,:,:]),
-            ('v_interp',double[:,:,:]),        
-            ('xi',double[:,:]),
-            ('psi',double[:,:]),
-            ('unif',double[:,:])
+            ('v_interp',double[:,:,:]),                        
+
+            # random shocks
+            ('unif',double[:,:]),
+            ('deadP',double[:,:]),
+
+            # states
+            ('states',double[:])
         ]      
 
         # b. create subclasses
@@ -146,45 +188,37 @@ class RetirementModelClass(ModelClass):
 
              **kwargs: change to baseline parameters in .par
 
-        """   
-
-        # a. baseline parameters
+        """              
+        # time parameters
+        self.par.T = 110-57+1 # 57 to 110 years
+        self.par.Tr = 77-57+1 # forced retirement at 77 years        
         
-        # demographics
-        self.par.T = 110-57+1 # 57-110 years
-        self.par.Tr = 77-57+1 # forced retirement at 77 years
-        
-        # preferences
+        # preference parameters
         self.par.rho = 0.96
         self.par.beta = 0.98        
-        self.par.alpha = 0.1
-        self.par.gamma = 0.08
+        self.par.alpha_0_male = 0.160 + 0.05 # constant
+        self.par.alpha_0_female = 0.119 + 0.08 # constant
+        self.par.alpha_1 = 0.053 # high skilled
+        self.par.alpha_2 = -0.036 # children
+        self.par.gamma = 0.08 # bequest motive
 
-        # taste shocks
-        self.par.sigma_eta = 0.435
+        # uncertainty/variance parameters
+        self.par.sigma_eta = 0.435 # taste shock
+        #self.par.sigma_xi = 0.2        
 
-        # income
-        men_surv_to_99 = [0.99292,0.99242,0.99186,0.9905,0.98969,0.98883,0.98803,0.98674,0.98626,
-        0.98516,0.98393,0.98222,0.98092,0.97806,0.97702,0.97523,0.97193,0.96871,0.96631,0.96403,0.9579,
-        0.95379,0.94785,0.94092,0.9326,0.92529,0.91379,0.9071,0.89541,0.88177,0.86924,0.85226,0.83528,
-        0.82236,0.79992,0.77261,0.74983,0.74447,0.72467,0.68315,0.65767,0.66008,0.60322] # DST fra tabel: HISB9, 1-dødshyppighed
-        self.par.survival_probs = men_surv_to_99 + list(np.linspace(men_surv_to_99[-1],0,110-99))
-        #self.par.survival_probs = [0.93332,0.92671,0.91968,0.9122,0.90353,0.89422,0.88423,0.87364,0.86206,0.85021,0.8376,0.82413,
-        #0.80948,0.79404,0.77662,0.75878,0.73998,0.71921,0.69671,0.67324,0.64902,0.6217,0.59297,0.56204,
-        #0.52884,0.49319,0.45634,0.417,0.37826,0.3387,0.29866,0.25961,0.22125,0.18481,0.15198,0.12157,
-        #0.09393,0.07043,0.05243,0.038,0.02596,0.01707,0.01127] #DST fra tabel: HISB9
-        self.par.Y = 1
-        self.par.sigma_xi = 0.2
-        
-        # saving
-        self.par.R = 1.03
-        
+        # savings
+        self.par.R = 1.03 # interest rate
+
         # grids
-        self.par.a_max = 100 # denominated in 100.000 kr
+        self.par.a_max = 100 # 10 mio. kr. denominated in 100.000 kr
         self.par.a_phi = 1.1
-        self.par.Nxi = 8
         self.par.Na = 150
         self.par.poc = 10 # points on constraint
+        #self.par.Nxi = 8                
+
+        # states
+        self.par.states = list(itertools.product([0, 1], repeat=4))
+        self.par.var = {'male': 0, 'elig': 1, 'high_skilled': 2, 'children': 3}
 
         # tax system
         self.par.tau_upper = 0.59
@@ -211,6 +245,8 @@ class RetirementModelClass(ModelClass):
         self.par.simT = self.par.T
         self.par.simN = 1000
         self.par.sim_seed = 1998
+        self.par.simM_init = 5*np.ones(self.par.simN)
+        self.par.simStates = np.zeros(self.par.simN,dtype=int)
 
         # b. update baseline parameters using keywords 
         for key,val in kwargs.items():
@@ -226,7 +262,7 @@ class RetirementModelClass(ModelClass):
         self.par.grid_a = misc.nonlinspace(1e-6,self.par.a_max,self.par.Na,self.par.a_phi)
         
         # b. shocks (qudrature nodes and weights using GaussHermite)
-        self.par.xi,self.par.xi_w = funs.GaussHermite_lognorm(self.par.sigma_xi,self.par.Nxi)
+        #self.par.xi,self.par.xi_w = funs.GaussHermite_lognorm(self.par.sigma_xi,self.par.Nxi)
 
         # create tiled/broadcasted arrays to use in compute
         #self.par.a_work = np.transpose(np.array([self.par.grid_a]*self.par.Nxi))
@@ -235,11 +271,6 @@ class RetirementModelClass(ModelClass):
         # d. set seed
         np.random.seed(self.par.sim_seed)
 
-    def checksum(self):
-        """ print checksum """
-
-        print(f'checksum: {np.mean(self.sol.c[0])}')
-
     #########
     # solve #
     #########
@@ -247,47 +278,101 @@ class RetirementModelClass(ModelClass):
     def _solve_prep(self):
         """ allocate memory for solution """
 
-        self.sol.c = np.nan*np.ones((self.par.T,self.par.Na+self.par.poc,2))        
-        self.sol.m = np.nan*np.zeros((self.par.T,self.par.Na+self.par.poc,2))
-        self.sol.v = np.nan*np.zeros((self.par.T,self.par.Na+self.par.poc,2))
-        self.sol.v_plus = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
-        
-        #self.sol.c_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))
-        #self.sol.v_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na*self.par.Nxi,2))  
-        self.sol.c_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
-        self.sol.v_plus_interp = np.nan*np.zeros((self.par.T-1,self.par.Na,2))  
-        
-        self.sol.c_plus_retired_interp = np.nan*np.zeros((self.par.T-1,self.par.Na))
-        self.sol.v_plus_retired_interp = np.nan*np.zeros((self.par.T-1,self.par.Na))        
-        self.sol.q = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
-        self.sol.v_plus_raw = np.nan*np.zeros((self.par.T-1,self.par.Na,2))
+        # prep
+        par = self.par
+        num_st = len(par.states)
+
+        # solution
+        self.sol.c = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2,3))        
+        self.sol.m = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2,3))
+        self.sol.v = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2,3))              
+
+        # interpolation
+        self.sol.c_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3))
+        self.sol.v_plus_interp = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3)) 
+
+        # post decision        
+        self.sol.q = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3))
+        self.sol.v_plus_raw = np.nan*np.zeros((par.T-1,num_st,par.Na,2,3))
 
     def solve(self):
         """ solve the model """
+
+        # prep
+        par = self.par
+        sol = self.sol
 
         # a. allocate solution
         self._solve_prep()
         
         # b. backwards induction
-        for t in reversed(range(self.par.T)):        
+        for t in reversed(range(par.T)):    
+            #for st in par.states:    
+            for st in range(len(par.states)):
             
-            # i. last period
-            if t == self.par.T-1:
+                # i. last period
+                if t == par.T-1:
                 
-                last_period.solve(t,self.sol,self.par)
+                    last_period.solve(t,st,sol,par)
 
-            ## ii. if forced to retire
-            elif t >= self.par.Tr-1:
+                ## ii. if forced to retire
+                elif t >= par.Tr-2:
 
-                post_decision.compute_retired(t,self.sol,self.par)
-                egm.solve_bellman_retired(t,self.sol,self.par)
+                    retirement = [0,0,0] # t+1 sol, retirement age, t sol
+                    post_decision.compute_retired(t,st,sol,par,retirement)
+                    egm.solve_bellman_retired(t,st,sol,par,retirement)
                 
-            # iii. all other periods
-            else:
-                
-                post_decision.compute_retired(t,self.sol,self.par)
-                post_decision.compute_work(t,self.sol,self.par)
-                egm.solve_bellman_work(t,self.sol,self.par)
+                # iii. all other periods
+                else:
+
+                    # in order to keep track of eligibility of erp and two year rule
+                    # we recalculate erp in the relevant years
+                    # remember the three options are:
+                    # 1. erp with two year rule if retirement_age >= 62
+                    # 2. erp with no two year rule if 60 <= retirement_age <= 61
+                    # 3. no erp if retirement_age < 60
+
+                    # This is done with the "retirement lists"
+                    # 1. element is where to get the t+1 solution from
+                    # 2. element is which erp system is in action
+                    # 3. element is where to store the t solution
+                    # 0 is the "main solution", 1 and 2 are "dummy solutions". 1 is erp with no two year rule, 2 is no erp
+
+                    #if transitions.elig(st) == 1: # if eligible to erp we need to recalculate
+                    if transitions.state_translate(st,'elig',par) == 1:
+
+                        if transitions.age(t+1) >= 65: # oap
+                            egm.all_egm(t,st,sol,par,[0,0,0]) # 1. main sol
+                            
+                        elif transitions.age(t+1) == 64: # erp with two year rule
+                            retirement = [[0,0,0],[0,1,1],[0,2,2]] # 1. main sol, 2. sol if no two year rule, 3. sol if no erp
+                            for ir in range(len(retirement)):
+                                egm.all_egm(t,st,sol,par,retirement[ir])                                                                        
+
+                        elif 62 <= transitions.age(t+1) <= 63: # erp with two year rule
+                            retirement = [[0,0,0],[1,1,1],[2,2,2]] # 1. main sol, 2. sol if no two year rule, 3. sol if no erp
+                            for ir in range(len(retirement)):   
+                                egm.all_egm(t,st,sol,par,retirement[ir])
+                                                    
+                        elif transitions.age(t+1) == 61: # jump to erp without two year rule
+                            retirement = [[1,1,0],[2,2,2]] # 1. main sol, 2. sol if no erp
+                            for ir in range(len(retirement)):   
+                                egm.all_egm(t,st,sol,par,retirement[ir])
+
+                        elif transitions.age(t+1) == 60: # erp without two year rule
+                            retirement = [[0,1,0],[2,2,2]] # 1. main sol, 2. sol if no erp
+                            for ir in range(len(retirement)):  
+                                egm.all_egm(t,st,sol,par,retirement[ir])
+
+                        elif transitions.age(t+1) == 59: # jump to no erp
+                            egm.all_egm(t,st,sol,par,[2,2,0]) # 1. main sol                     
+
+                        elif transitions.age(t+1) < 59: # no erp
+                            egm.all_egm(t,st,sol,par,[0,2,0]) # 1. main sol  
+
+                    else: # if not eligible to erp
+                        egm.all_egm(t,st,sol,par,[0,2,0]) # 1. main sol is no erp
+
 
     ############
     # simulate #
@@ -296,25 +381,41 @@ class RetirementModelClass(ModelClass):
     def _simulate_prep(self):
         """ allocate memory for simulation and draw random numbers """
 
-        # a. allocate
-        self.sim.p = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.m = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.c = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.v = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.d = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.alive = np.ones((self.par.simT,self.par.simN)) #dummy for alive
-        self.sim.a = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.c_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))
-        self.sim.v_interp = np.nan*np.zeros((self.par.simT,self.par.simN,2))                     
+        # prep
+        par = self.par
+        sim = self.sim
+
+        # solution
+        sim.c = np.nan*np.zeros((par.simT,par.simN))
+        sim.m = np.nan*np.zeros((par.simT,par.simN))
+        sim.a = np.nan*np.zeros((par.simT,par.simN))
+        sim.d = np.nan*np.zeros((par.simT,par.simN)) # retirement choice
+
+        # dummies and probabilities
+        sim.alive = np.ones((par.simT,par.simN)) #dummy for alive
+        sim.probs = np.zeros((par.simT,par.simN)) # retirement probs
+        sim.ret_age = np.nan*np.zeros(par.simN) # retirement age
+
+        # interpolation
+        sim.c_interp = np.nan*np.zeros((par.simT,par.simN,2))
+        sim.v_interp = np.nan*np.zeros((par.simT,par.simN,2))    
 
         # b. initialize m and d
-        self.sim.m[0,:] = np.random.lognormal(np.log(5),1.2,self.par.simN) # initial m, lognormal dist
-        #self.sim.m[0,:] = 10*np.ones(par.simN) # initial m        
-        self.sim.d[0,:] = np.ones(self.par.simN)
+        sim.m[0,:] = par.simM_init        
+        sim.d[0,:] = np.ones(par.simN) # all is working at t=0
 
         # c. draw random shocks
-        self.sim.unif = np.random.rand(self.par.simT,self.par.simN)
-        self.sim.deadP = np.random.rand(self.par.simT,self.par.simN)
+        sim.unif = np.random.rand(par.simT,par.simN) # taste shocks
+        sim.deadP = np.random.rand(par.simT,par.simN) # death probs
+
+        # d. states
+        sim.states = par.simStates
+        #np.random.randint(8,size=par.simN,dtype=int) # uniform between 0 and 15
+        #sim.states[0:900] = np.random.randint(4,size=900,dtype=int)
+        #sim.states[900:1000] = np.random.randint(4,8,size=100,dtype=int)
+        #sim.states[500:985] = np.random.randint(8,12,size=485,dtype=int)
+        #sim.states[985:1000] = np.random.randint(12,16,size=15,dtype=int)
+
 
     def simulate(self):
         """ simulate model """
@@ -325,6 +426,26 @@ class RetirementModelClass(ModelClass):
         # b. simulate
         self.par.simT = self.par.T
         simulate.lifecycle(self.sim,self.sol,self.par)
+
+
+    def test(self):
+        """ method for specifying test """
+        
+        # a. save print status
+        do_print = self.par.do_print
+        self.par.do_print = False
+
+        # b. test run
+        self.solve()
+
+        # c. timed run
+        tic = time.time()  
+        self.solve()
+        toc = time.time()
+        print(f'solution time: {toc-tic:.1f} secs')
+
+        # d. reset print status
+        self.par.do_print = do_print        
 
 
 #to debug code
