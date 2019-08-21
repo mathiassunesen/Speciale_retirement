@@ -66,7 +66,8 @@ def lifecycle(sim,sol,par):
             
                 if (prob[0,0] > unif[t,i]): # if prob of retiring exceeds threshold
                     d[t+1,i] = 0 # retire
-
+                    c[t,i] = c_interp[t,i,0]
+                    
                     #if transitions.elig(st[i]) == 0:
                     if transitions.state_translate(st[i],'elig',par) == 0:
                         ret_age[i] = 2 # no erp
@@ -76,7 +77,7 @@ def lifecycle(sim,sol,par):
                         ret_age[i] = 1
                     else:
                         ret_age[i] = 2
-                    c[t,i] = c_interp[t,i,0]
+
                 else:
                     d[t+1,i] = 1 # work
                     c[t,i] = c_interp[t,i,1]                                                        

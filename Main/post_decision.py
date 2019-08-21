@@ -27,7 +27,7 @@ def compute_retired(t,st,sol,par,retirement):
     
     # a. next period ressources and value
     a = par.grid_a
-    m_plus = par.R*a + transitions.pension(t,st,a,retirement[1],par)        
+    m_plus = par.R*a + transitions.pension(t+1,st,a,retirement[1],par)        
 
     # b. interpolate       
     linear_interp.interp_1d_vec(m,c,m_plus,c_plus_interp)
@@ -63,7 +63,7 @@ def compute_work(t,st,sol,par):
 
     # a. next period ressources and value
     a = par.grid_a
-    m_plus = par.R*a + transitions.income(t,st,par)
+    m_plus = par.R*a + transitions.income(t+1,st,par)
 
     # b. interpolate
     for id in prange(2): # in parallel
@@ -98,7 +98,7 @@ def value_of_choice_retired(t,st,m,c,sol,par,retirement):
 
     # a. next period ressources
     a = m-c
-    m_plus = par.R*a + transitions.pension(t,st,a,retirement[1],par)
+    m_plus = par.R*a + transitions.pension(t+1,st,a,retirement[1],par)
 
     # b. next period value
     linear_interp.interp_1d_vec(sol.m[t+1,st,:,0,retirement[0]],sol.v[t+1,st,:,0,retirement[0]],m_plus,v_plus_interp)
@@ -118,7 +118,7 @@ def value_of_choice_work(t,st,m,c,sol,par):
 
     # a. next period ressources
     a = m-c
-    m_plus = par.R*a + transitions.income(t,st,par)
+    m_plus = par.R*a + transitions.income(t+1,st,par)
 
     # b. next period value
     for id in prange(2):
