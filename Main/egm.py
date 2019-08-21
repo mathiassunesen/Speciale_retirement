@@ -28,7 +28,7 @@ def solve_bellman_retired(t,st,sol,par,retirement):
     v = sol.v[t,st,poc:,0,retirement[2]]
     q = sol.q[t,st,:,0,retirement[2]]
     v_plus_raw = sol.v_plus_raw[t,st,:,0,retirement[2]]
-    pi = transitions.survival(t,par)     
+    pi = transitions.survival(t,st,par)     
 
     # a. solution
     c[:] = utility.inv_marg_func(q,par)
@@ -49,7 +49,7 @@ def solve_bellman_work(t,st,sol,par):
     v = sol.v[t,st,poc:,1,0]
     q = sol.q[t,st,:,1,0]
     v_plus_raw = sol.v_plus_raw[t,st,:,1,0]
-    pi = transitions.survival(t,par)     
+    pi = transitions.survival(t,st,par)     
 
     # a. raw solution
     c_raw = utility.inv_marg_func(q,par)

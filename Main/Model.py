@@ -15,6 +15,7 @@ yaml.warnings({'YAMLLoadWarning': False})
 import time
 import numpy as np
 from numba import boolean, int32, double
+import itertools
 
 # consav package
 from consav import linear_interp # for linear interpolation
@@ -195,7 +196,7 @@ class RetirementModelClass(ModelClass):
         # preference parameters
         self.par.rho = 0.96
         self.par.beta = 0.98        
-        self.par.alpha_0_male = 0.160 + 0.08 # constant
+        self.par.alpha_0_male = 0.160 + 0.05 # constant
         self.par.alpha_0_female = 0.119 + 0.08 # constant
         self.par.alpha_1 = 0.053 # high skilled
         self.par.alpha_2 = -0.036 # children
@@ -216,16 +217,8 @@ class RetirementModelClass(ModelClass):
         #self.par.Nxi = 8                
 
         # states
-        self.par.states = [
-            0, # male, high_skilled, children
-            1, # male, high_skilled, no children
-            2, # male, low_skilled, children
-            3, # male, low_skilled, no_children
-            4, # female, high_skilled, children
-            5, # female, high_skilled, no children
-            6, # female, low_skilled, children
-            7, # female, low_skilled, no_children            
-        ] # should have 2*2*2 = 8 states
+        self.par.states = list(itertools.product([0, 1], repeat=4))
+        self.par.var = {'male': 0, 'elig': 1, 'high_skilled': 2, 'children': 3}
 
         # tax system
         self.par.tau_upper = 0.59
@@ -252,6 +245,8 @@ class RetirementModelClass(ModelClass):
         self.par.simT = self.par.T
         self.par.simN = 1000
         self.par.sim_seed = 1998
+        self.par.simM_init = 5*np.ones(self.par.simN)
+        self.par.simStates = np.zeros(self.par.simN,dtype=int)
 
         # b. update baseline parameters using keywords 
         for key,val in kwargs.items():
@@ -312,7 +307,8 @@ class RetirementModelClass(ModelClass):
         
         # b. backwards induction
         for t in reversed(range(par.T)):    
-            for st in par.states:    
+            #for st in par.states:    
+            for st in range(len(par.states)):
             
                 # i. last period
                 if t == par.T-1:
@@ -329,56 +325,54 @@ class RetirementModelClass(ModelClass):
                 # iii. all other periods
                 else:
 
-                    if transitions.age(t+1) >= 65:
-                        retirement = [0,0,0]
-                        egm.all_egm(t,st,sol,par,retirement)
-                        
-                    elif transitions.age(t+1) == 64:
-                        retirement = [0,0,0]
-                        retirement_60_61 = [0,1,1]
-                        retirement_below60 = [0,2,2]
-                        egm.all_egm(t,st,sol,par,retirement)
-                        egm.all_egm(t,st,sol,par,retirement_60_61)
-                        egm.all_egm(t,st,sol,par,retirement_below60)                                                                        
+                    # in order to keep track of eligibility of erp and two year rule
+                    # we recalculate erp in the relevant years
+                    # remember the three options are:
+                    # 1. erp with two year rule if retirement_age >= 62
+                    # 2. erp with no two year rule if 60 <= retirement_age <= 61
+                    # 3. no erp if retirement_age < 60
 
-                    elif transitions.age(t+1) == 63:
-                        retirement = [0,0,0]
-                        retirement_60_61 = [1,1,1]
-                        retirement_below60 = [2,2,2]   
-                        egm.all_egm(t,st,sol,par,retirement)
-                        egm.all_egm(t,st,sol,par,retirement_60_61)
-                        egm.all_egm(t,st,sol,par,retirement_below60)                        
-                     
-                    elif transitions.age(t+1) == 62:
-                        retirement = [0,0,0]
-                        retirement_60_61 = [1,1,1]
-                        retirement_below60 = [2,2,2]   
-                        egm.all_egm(t,st,sol,par,retirement)
-                        egm.all_egm(t,st,sol,par,retirement_60_61)
-                        egm.all_egm(t,st,sol,par,retirement_below60)                        
+                    # This is done with the "retirement lists"
+                    # 1. element is where to get the t+1 solution from
+                    # 2. element is which erp system is in action
+                    # 3. element is where to store the t solution
+                    # 0 is the "main solution", 1 and 2 are "dummy solutions". 1 is erp with no two year rule, 2 is no erp
 
-                    elif transitions.age(t+1) == 61:
-                        retirement = [1,1,0]
-                        retirement_below60 = [2,2,2]   
-                        egm.all_egm(t,st,sol,par,retirement)
-                        egm.all_egm(t,st,sol,par,retirement_below60)                        
+                    #if transitions.elig(st) == 1: # if eligible to erp we need to recalculate
+                    if transitions.state_translate(st,'elig',par) == 1:
 
-                    elif transitions.age(t+1) == 60:
-                        retirement = [0,1,0]
-                        retirement_below60 = [2,2,2]  
-                        egm.all_egm(t,st,sol,par,retirement)
-                        egm.all_egm(t,st,sol,par,retirement_below60)                         
+                        if transitions.age(t+1) >= 65: # oap
+                            egm.all_egm(t,st,sol,par,[0,0,0]) # 1. main sol
+                            
+                        elif transitions.age(t+1) == 64: # erp with two year rule
+                            retirement = [[0,0,0],[0,1,1],[0,2,2]] # 1. main sol, 2. sol if no two year rule, 3. sol if no erp
+                            for ir in range(len(retirement)):
+                                egm.all_egm(t,st,sol,par,retirement[ir])                                                                        
 
-                    elif transitions.age(t+1) == 59:
-                        retirement = [2,2,0]
-                        egm.all_egm(t,st,sol,par,retirement)                        
+                        elif 62 <= transitions.age(t+1) <= 63: # erp with two year rule
+                            retirement = [[0,0,0],[1,1,1],[2,2,2]] # 1. main sol, 2. sol if no two year rule, 3. sol if no erp
+                            for ir in range(len(retirement)):   
+                                egm.all_egm(t,st,sol,par,retirement[ir])
+                                                    
+                        elif transitions.age(t+1) == 61: # jump to erp without two year rule
+                            retirement = [[1,1,0],[2,2,2]] # 1. main sol, 2. sol if no erp
+                            for ir in range(len(retirement)):   
+                                egm.all_egm(t,st,sol,par,retirement[ir])
 
-                    elif transitions.age(t+1) < 59:
-                        retirement = [0,2,0] 
-                        egm.all_egm(t,st,sol,par,retirement)                        
+                        elif transitions.age(t+1) == 60: # erp without two year rule
+                            retirement = [[0,1,0],[2,2,2]] # 1. main sol, 2. sol if no erp
+                            for ir in range(len(retirement)):  
+                                egm.all_egm(t,st,sol,par,retirement[ir])
 
-                    
-                    
+                        elif transitions.age(t+1) == 59: # jump to no erp
+                            egm.all_egm(t,st,sol,par,[2,2,0]) # 1. main sol                     
+
+                        elif transitions.age(t+1) < 59: # no erp
+                            egm.all_egm(t,st,sol,par,[0,2,0]) # 1. main sol  
+
+                    else: # if not eligible to erp
+                        egm.all_egm(t,st,sol,par,[0,2,0]) # 1. main sol is no erp
+
 
     ############
     # simulate #
@@ -389,33 +383,39 @@ class RetirementModelClass(ModelClass):
 
         # prep
         par = self.par
+        sim = self.sim
 
         # solution
-        self.sim.c = np.nan*np.zeros((par.simT,par.simN))
-        self.sim.m = np.nan*np.zeros((par.simT,par.simN))
-        self.sim.a = np.nan*np.zeros((par.simT,par.simN))
-        self.sim.d = np.nan*np.zeros((par.simT,par.simN)) # retirement choice
+        sim.c = np.nan*np.zeros((par.simT,par.simN))
+        sim.m = np.nan*np.zeros((par.simT,par.simN))
+        sim.a = np.nan*np.zeros((par.simT,par.simN))
+        sim.d = np.nan*np.zeros((par.simT,par.simN)) # retirement choice
 
         # dummies and probabilities
-        self.sim.alive = np.ones((par.simT,par.simN)) #dummy for alive
-        self.sim.probs = np.zeros((par.simT,par.simN)) # retirement probs
-        self.sim.ret_age = np.nan*np.zeros(par.simN) # retirement age
+        sim.alive = np.ones((par.simT,par.simN)) #dummy for alive
+        sim.probs = np.zeros((par.simT,par.simN)) # retirement probs
+        sim.ret_age = np.nan*np.zeros(par.simN) # retirement age
 
         # interpolation
-        self.sim.c_interp = np.nan*np.zeros((par.simT,par.simN,2))
-        self.sim.v_interp = np.nan*np.zeros((par.simT,par.simN,2))    
+        sim.c_interp = np.nan*np.zeros((par.simT,par.simN,2))
+        sim.v_interp = np.nan*np.zeros((par.simT,par.simN,2))    
 
         # b. initialize m and d
-        self.sim.m[0,:] = np.random.lognormal(np.log(2.5),1.2,self.par.simN) # initial m, lognormal dist
-        #self.sim.m[0,:] = 10*np.ones(par.simN) # initial m        
-        self.sim.d[0,:] = np.ones(self.par.simN)
+        sim.m[0,:] = par.simM_init        
+        sim.d[0,:] = np.ones(par.simN) # all is working at t=0
 
         # c. draw random shocks
-        self.sim.unif = np.random.rand(self.par.simT,self.par.simN) # taste shocks
-        self.sim.deadP = np.random.rand(self.par.simT,self.par.simN) # death probs
+        sim.unif = np.random.rand(par.simT,par.simN) # taste shocks
+        sim.deadP = np.random.rand(par.simT,par.simN) # death probs
 
         # d. states
-        self.sim.states = np.random.randint(8,size=self.par.simN,dtype=int) # uniform between 0 and 7
+        sim.states = par.simStates
+        #np.random.randint(8,size=par.simN,dtype=int) # uniform between 0 and 15
+        #sim.states[0:900] = np.random.randint(4,size=900,dtype=int)
+        #sim.states[900:1000] = np.random.randint(4,8,size=100,dtype=int)
+        #sim.states[500:985] = np.random.randint(8,12,size=485,dtype=int)
+        #sim.states[985:1000] = np.random.randint(12,16,size=15,dtype=int)
+
 
     def simulate(self):
         """ simulate model """
@@ -453,4 +453,4 @@ from consav import runtools
 runtools.write_numba_config(disable=1,threads=8)
 model = RetirementModelClass(name='baseline',solmethod='egm')
 model.solve()
-#model.simulate()
+model.simulate()

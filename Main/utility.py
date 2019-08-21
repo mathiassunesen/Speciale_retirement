@@ -8,9 +8,12 @@ def func(c,d,st,par):
         leisure = 0
     else: # retired
         # dummies
-        ma = transitions.male(st)
-        hs = transitions.high_skilled(st)
-        ch = transitions.children(st)
+        #ma = transitions.male(st)
+        #hs = transitions.high_skilled(st)
+        #ch = transitions.children(st)
+        ma = transitions.state_translate(st,'male',par)
+        hs = transitions.state_translate(st,'high_skilled',par)
+        ch = transitions.state_translate(st,'children',par)                
         leisure = (ma == 1)*par.alpha_0_male + (ma == 0)*par.alpha_0_female + hs*par.alpha_1 + ch*par.alpha_2 
 
     return c**(1-par.rho)/(1-par.rho) + leisure

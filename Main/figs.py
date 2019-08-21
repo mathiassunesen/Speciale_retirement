@@ -1,13 +1,15 @@
 import numpy as np
 
+# plotting
 import matplotlib.pyplot as plt
-from matplotlib import cm
-from mpl_toolkits.mplot3d import Axes3D
 import seaborn as sns
 sns.set_style("whitegrid")
 prop_cycle = plt.rcParams["axes.prop_cycle"]
 colors = prop_cycle.by_key()["color"]
-import ipywidgets as widgets
+
+# local modules
+import transitions
+
 
 def cons_time(model,t):
     
@@ -111,40 +113,56 @@ def consumption_function(model,t):
     ax.set_ylim([par.grid_m[0],par.grid_m[-1]])
     ax.invert_xaxis()
 
-    plt.show()
+    plt.show()   
 
-def consumption_function_interact(model):
-
-    widgets.interact(consumption_function,
-        model=widgets.fixed(model),
-        t=widgets.Dropdown(description='t', 
-            options=list(range(model.par.T)), value=0),
-        )          
-
-def lifecycle(model,vars=['m','c','a']):
+def lifecycle(model,vars=['m','c','a'],ages=[57,68]):
 
     # a. unpack
-    par = model.par
     sim = model.sim
 
     # b. figure
     fig = plt.figure()
-
+    ax = fig.add_subplot(1,1,1)
     simvardict = dict([('m','$m_t$'),
                   ('c','$c_t$'),
                   ('a','$a_t$'),
                   ('d','$d_t$'),
                   ('alive','$alive_t$')])
 
-    age = np.arange(110-par.T+1,110+1)
-    ax = fig.add_subplot(1,1,1)
-    
+    x = np.arange(ages[0], ages[1]+1)
     for i in vars:
-        simdata = getattr(sim,i)
-        ax.plot(age,np.nanmean(simdata,axis=1),lw=2,label=simvardict[i])
+        simdata = getattr(sim,i)[transitions.inv_age(x)]
+        ax.plot(x,np.nanmean(simdata,axis=1),lw=2,label=simvardict[i])
     
     ax.legend()
-    ax.grid(True)
-    ax.set_xlabel('age')
+    ax.grid(True)    
+    ax.set_xlabel('Age')
+    if (len(x) < 15):
+        plt.xticks(x)
     if ('m' in vars or 'c' in vars or 'a' in vars):
         ax.set_ylabel('100.000 DKR')
+
+
+def retirement_probs(model,ages=[57,68]):
+    
+    # a. unpack
+    sim = model.sim
+    
+    # b. figure
+    fig, ax = plt.subplots()
+    #ax = fig.add_subplot(1,1,1)
+    avg_probs = np.zeros(ages[1] - ages[0]+1)
+    for t in range(len(avg_probs)):
+        avg_probs[t] = np.mean(sim.probs[t])
+
+    x = np.arange(ages[0], ages[1]+1)
+    ax.plot(x,avg_probs,'r')
+    
+    ax.grid(True)    
+    plt.xticks(x)
+    ax.set_ylim(top=0.35)
+    ax.set_xlabel('Age')
+    ax.set_ylabel('Retirement probability')
+        
+
+    

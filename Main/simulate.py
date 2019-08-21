@@ -43,11 +43,10 @@ def lifecycle(sim,sol,par):
     # simulation
     for t in range(par.simT):
 
-        survival_probs = transitions.survival(t,par) # pull out
-
         for i in prange(par.simN): # in parallel
 
             # a. check if alive
+            survival_probs = transitions.survival(t,st[i],par)            
             if  alive[t-1,i] == 0 or survival_probs < deadP[t,i]:
                 alive[t,i] = 0 # Still dead
                 continue 
@@ -67,7 +66,11 @@ def lifecycle(sim,sol,par):
             
                 if (prob[0,0] > unif[t,i]): # if prob of retiring exceeds threshold
                     d[t+1,i] = 0 # retire
-                    if transitions.age(t+1) >= 62:
+
+                    #if transitions.elig(st[i]) == 0:
+                    if transitions.state_translate(st[i],'elig',par) == 0:
+                        ret_age[i] = 2 # no erp
+                    elif transitions.age(t+1) >= 62:
                         ret_age[i] = 0
                     elif 60 <= transitions.age(t+1) <= 61:
                         ret_age[i] = 1
@@ -80,7 +83,7 @@ def lifecycle(sim,sol,par):
             
             # c. retired
             else:            
-                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,st[i],np.array([a[t-1,i]]),ret_age[i])
+                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,st[i],np.array([a[t-1,i]]),ret_age[i],par)
                 c[t,i] = linear_interp.interp_1d(m_sol[t,st[i],:,0],c_sol[t,st[i],:,0],m[t,i])
                 if (t < par.simT-1): # if not last period
                     d[t+1,i] = 0 # still retired                

@@ -27,7 +27,7 @@ def compute_retired(t,st,sol,par,retirement):
     
     # a. next period ressources and value
     a = par.grid_a
-    m_plus = par.R*a + transitions.pension(t,st,a,retirement[1])        
+    m_plus = par.R*a + transitions.pension(t,st,a,retirement[1],par)        
 
     # b. interpolate       
     linear_interp.interp_1d_vec(m,c,m_plus,c_plus_interp)
@@ -37,7 +37,7 @@ def compute_retired(t,st,sol,par,retirement):
     marg_u_plus = utility.marg_func(c_plus_interp,par)
 
     # d. store results
-    pi = transitions.survival(t,par)
+    pi = transitions.survival(t,st,par)
     v_plus_raw[:] = v_plus_interp
     q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma) 
 
@@ -83,7 +83,7 @@ def compute_work(t,st,sol,par):
     marg_u_plus = prob*utility.marg_func(c_plus0,par) + (1-prob)*utility.marg_func(c_plus1,par)
 
     # e. store result in q
-    pi = transitions.survival(t,par)    
+    pi = transitions.survival(t,st,par)    
     v_plus_raw[:] = logsum
     q[:] = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma)
 
@@ -98,13 +98,13 @@ def value_of_choice_retired(t,st,m,c,sol,par,retirement):
 
     # a. next period ressources
     a = m-c
-    m_plus = par.R*a + transitions.pension(t,st,a,retirement[1])
+    m_plus = par.R*a + transitions.pension(t,st,a,retirement[1],par)
 
     # b. next period value
     linear_interp.interp_1d_vec(sol.m[t+1,st,:,0,retirement[0]],sol.v[t+1,st,:,0,retirement[0]],m_plus,v_plus_interp)
     
     # c. value-of-choice
-    pi = transitions.survival(t,par)
+    pi = transitions.survival(t,st,par)
     v = utility.func(c,0,st,par) + par.beta*(pi*v_plus_interp + (1-pi)*par.gamma*a)
     return v
 
@@ -128,6 +128,6 @@ def value_of_choice_work(t,st,m,c,sol,par):
     logsum = logsum.reshape(a.shape)
     
     # c. value-of-choice
-    pi = transitions.survival(t,par)
+    pi = transitions.survival(t,st,par)
     v = utility.func(c,1,st,par) + par.beta*(pi*logsum + (1-pi)*par.gamma*a)
     return v
