@@ -1,4 +1,5 @@
 import numpy as np
+import warnings
 
 # plotting
 import matplotlib.pyplot as plt
@@ -10,42 +11,47 @@ colors = prop_cycle.by_key()["color"]
 # local modules
 import transitions
 
+def policy(model,ax,time,policy_type='c',d_choice=[0,1],states=[0]):
 
-def cons_time(model,t):
-    
     # convert to list
-    if type(t) == int:
-        t = [t]
-    
-    # a. unpack
-    par = model.par
+    if type(time) == int:
+        time = [time] 
+    if type(d_choice) == int:
+        d_choice = [d_choice]
+    if type(states) == int:
+        states == [states]
+
+    # unpack
     sol = model.sol
-    poc = par.poc
+
+    # b. policy type
+    if policy_type == 'c':
+        policy = sol.c[:,:,:,:,0] # zero in the end to get the main sol
+        lab = '$C_t(t=0, d=1)$'
+        ylab = '$C_t$'
+    elif policy_type == 'v':
+        policy = sol.v[:,:,:,:,0]
+        lab = '$v_t$'
+        ylab = '$v_t$'
+    m = sol.m[:,:,:,:,0]
+
+    # c. states
+    if states == 'all':
+        states = np.arange(len(model.par.states))
     
-    # b. loop
-    for i in t:
-        
-        m = sol.m[i]
-        c = sol.c[i]
+    # c. loop over time
+    for t in time:
+        for st in states:   
+            for d in d_choice:
+                # plot
+                ax.plot(m[t,st,:,d], policy[t,st,:,d], label=lab)
 
-        # c. figure
-        fig = plt.figure()
-        ax = fig.add_subplot(1,1,1)
-
-        # d. plot consumption
-        ax.plot(m[:,0],c[:,0],label='$C_t(d_t=0)$')
-        ax.plot(m[:,1],c[:,1],label='$C_t(d_t=1)$')
-        ax.set_title(f'($t = {i}$)',pad=10)
-
-        # f. details
-        ax.legend()
-        ax.grid(True)
-        ax.set_xlabel('$m_t$')
-        #ax.set_xlim(min(m[poc,0],m[0,1]),max(m[-1,0], m[-1,1]))
-        ax.set_ylabel('$C_t$')
-        #ax.set_ylim(min(c[poc,0],c[0,1]),max(c[-1,0], c[-1,1]))
-
-        plt.show()
+    #ax.set_title(f'($t = {i}$)',pad=10)
+    # d. details
+    ax.legend()
+    ax.grid(True)
+    ax.set_xlabel('$m_t$')
+    ax.set_ylabel(ylab)
 
 def cons_choice(model,t,st,choice='work'):
     
@@ -89,40 +95,12 @@ def cons_choice(model,t,st,choice='work'):
         
     plt.show()
 
-def consumption_function(model,t):
-
-    # a. unpack
-    par = model.par
-    sol = model.sol
-
-    # b. figure
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1,projection='3d')
-
-    p,m = np.meshgrid(par.grid_p, par.grid_m,indexing='ij')
-
-    # c. plot consumption
-    ax.plot_surface(p,m,sol.c[t,:,:],edgecolor='none',cmap=cm.viridis)
-    ax.set_title(f'$c$ ($t = {t})$',pad=10)
-
-    # d. details
-    ax.grid(True)
-    ax.set_xlabel('$p_t$')
-    ax.set_xlim([par.grid_p[0],par.grid_p[-1]])
-    ax.set_ylabel('$m_t$')
-    ax.set_ylim([par.grid_m[0],par.grid_m[-1]])
-    ax.invert_xaxis()
-
-    plt.show()   
-
-def lifecycle(model,vars=['m','c','a'],ages=[57,68]):
+def lifecycle(model,ax,vars=['m','c','a'],ages=[57,68]):
 
     # a. unpack
     sim = model.sim
 
     # b. figure
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
     simvardict = dict([('m','$m_t$'),
                   ('c','$c_t$'),
                   ('a','$a_t$'),
@@ -140,19 +118,17 @@ def lifecycle(model,vars=['m','c','a'],ages=[57,68]):
     ax.grid(True)    
     ax.set_xlabel('Age')
     if (len(x) < 15):
-        plt.xticks(x)
+        ax.set_xticks(x)
     if ('m' in vars or 'c' in vars or 'a' in vars):
         ax.set_ylabel('100.000 DKR')
 
 
-def retirement_probs(model,ages=[57,68]):
+def retirement_probs(model,ax,ages=[57,68]):
     
     # a. unpack
     sim = model.sim
     
     # b. figure
-    f, ax = plt.subplots()
-    #ax = fig.add_subplot(1,1,1)
     avg_probs = np.zeros(ages[1] - ages[0]+1)
     for t in range(len(avg_probs)):
         avg_probs[t] = np.mean(sim.probs[t])
@@ -161,12 +137,10 @@ def retirement_probs(model,ages=[57,68]):
     ax.plot(x,avg_probs,'r')
     
     ax.grid(True)    
-    plt.xticks(x)
+    ax.set_xticks(x)
     ax.set_ylim(top=0.35)
     ax.set_xlabel('Age')
     ax.set_ylabel('Retirement probability')
-
-    return ax
         
 
     
