@@ -163,8 +163,8 @@ class RetirementModelClass(ModelClass):
             ('v_interp',double[:,:,:]),                        
 
             # random shocks
-            ('unif',double[:,:]),
-            ('deadP',double[:,:]),
+            ('unif',double[:,:]),  #Taste shock 
+            ('deadP',double[:,:]), #Probs for dying
 
             # states
             ('states',double[:])
