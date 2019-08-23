@@ -85,18 +85,20 @@ class RetirementModelClass(ModelClass):
 
             # uncertainty/variance parameters
             ('sigma_eta',double), # taste shock
-            #('sigma_xi',double),            
+            ('sigma_xi_men',double), # income shock
+            ('sigma_xi_women',double), # income shock            
 
             # savings
             ('R',double), # interest rate
             
             # grids            
-            ('grid_a',double[:]),     
+            ('grid_a',double[:]),
+            ('a_work',double[:,:]), # broadcasting grid_a into matrix     
             ('a_max',int32), # a_grid
             ('a_phi',int32),
             ('Na',int32),
             ('poc',int32), 
-            #('Nxi',int32), GH-points
+            ('Nxi',int32), # GH-points
             
             # states
             ('states',double[:]),
@@ -165,6 +167,7 @@ class RetirementModelClass(ModelClass):
             # random shocks
             ('unif',double[:,:]),
             ('deadP',double[:,:]),
+            ('inc_shock',double[:,:]),
 
             # states
             ('states',double[:])
@@ -196,15 +199,16 @@ class RetirementModelClass(ModelClass):
         # preference parameters
         self.par.rho = 0.96
         self.par.beta = 0.98        
-        self.par.alpha_0_male = 0.160 + 0.05 # constant
-        self.par.alpha_0_female = 0.119 + 0.08 # constant
+        self.par.alpha_0_male = 0.160 # constant
+        self.par.alpha_0_female = 0.119 + 0.05 # constant
         self.par.alpha_1 = 0.053 # high skilled
         self.par.alpha_2 = -0.036 # children
         self.par.gamma = 0.08 # bequest motive
 
         # uncertainty/variance parameters
         self.par.sigma_eta = 0.435 # taste shock
-        #self.par.sigma_xi = 0.2        
+        self.par.sigma_xi_men = np.sqrt(0.544) # income shock
+        self.par.sigma_xi_women = np.sqrt(0.399) # income shock        
 
         # savings
         self.par.R = 1.03 # interest rate
@@ -214,7 +218,7 @@ class RetirementModelClass(ModelClass):
         self.par.a_phi = 1.1
         self.par.Na = 150
         self.par.poc = 10 # points on constraint
-        #self.par.Nxi = 8                
+        self.par.Nxi = 8          
 
         # states
         self.par.states = list(itertools.product([0, 1], repeat=4))
@@ -262,11 +266,13 @@ class RetirementModelClass(ModelClass):
         self.par.grid_a = misc.nonlinspace(1e-6,self.par.a_max,self.par.Na,self.par.a_phi)
         
         # b. shocks (qudrature nodes and weights using GaussHermite)
-        #self.par.xi,self.par.xi_w = funs.GaussHermite_lognorm(self.par.sigma_xi,self.par.Nxi)
+        self.par.xi_men,self.par.xi_men_w = funs.GaussHermite_lognorm(self.par.sigma_xi_men,self.par.Nxi)
+        self.par.xi_women,self.par.xi_women_w = funs.GaussHermite_lognorm(self.par.sigma_xi_women,self.par.Nxi)        
 
-        # create tiled/broadcasted arrays to use in compute
+        # c. create tiled/broadcasted arrays to use in compute
         #self.par.a_work = np.transpose(np.array([self.par.grid_a]*self.par.Nxi))
-        #self.par.xi_work = np.array([self.par.xi]*self.par.Na)
+        #self.par.xi_men_work = np.array([self.par.xi_men]*self.par.Na)
+        #self.par.xi_women_work = np.array([self.par.xi_women]*self.par.Na)        
 
         # d. set seed
         np.random.seed(self.par.sim_seed)
@@ -280,10 +286,10 @@ class RetirementModelClass(ModelClass):
 
         # prep
         par = self.par
-        num_st = len(par.states)
+        num_st = len(par.states) # number of states
 
         # solution
-        self.sol.c = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2,3))        
+        self.sol.c = np.nan*np.ones((par.T,num_st,par.Na+par.poc,2,3)) # 3 in the end is for storing ad hoc/extra solutions, when recalculating erp   
         self.sol.m = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2,3))
         self.sol.v = np.nan*np.zeros((par.T,num_st,par.Na+par.poc,2,3))              
 
@@ -306,72 +312,31 @@ class RetirementModelClass(ModelClass):
         self._solve_prep()
         
         # b. backwards induction
-        for t in reversed(range(par.T)):    
-            #for st in par.states:    
-            for st in range(len(par.states)):
+        for t in reversed(range(par.T)):       
+            for st in range(len(par.states)): # loop over states
             
                 # i. last period
                 if t == par.T-1:
                 
                     last_period.solve(t,st,sol,par)
 
-                ## ii. if forced to retire
-                elif t >= par.Tr-2:
+                # ii. if forced to retire (retirement decision is made one period ahead)
+                elif t+1 >= par.Tr-1:
 
-                    retirement = [0,0,0] # t+1 sol, retirement age, t sol
-                    post_decision.compute_retired(t,st,sol,par,retirement)
-                    egm.solve_bellman_retired(t,st,sol,par,retirement)
+                    post_decision.compute_retired(t,st,sol,par,[0,0,0]) # take t+1 sol from main sol, assume erp with two year rule (doesn't matter), store t sol in main sol
+                    egm.solve_bellman_retired(t,st,sol,par,[0,0,0])
                 
-                # iii. all other periods
+                # iii. oap period (retirement decision is made on period ahead)
+                elif transitions.age(t+1) >= 65: 
+                    egm.post_and_egm(t,st,sol,par,[0,0,0]) # just a wrapper, which runs both post decision and egm functions
+
+                # iv. erp period - here we have to recalculate solutions if eligible to erp
+                elif (59 <= transitions.age(t+1) <= 64 and transitions.state_translate(st,'elig',par) == 1):
+                    egm.recalculate(t,st,sol,par)
+
+                # v. before erp periods
                 else:
-
-                    # in order to keep track of eligibility of erp and two year rule
-                    # we recalculate erp in the relevant years
-                    # remember the three options are:
-                    # 1. erp with two year rule if retirement_age >= 62
-                    # 2. erp with no two year rule if 60 <= retirement_age <= 61
-                    # 3. no erp if retirement_age < 60
-
-                    # This is done with the "retirement lists"
-                    # 1. element is where to get the t+1 solution from
-                    # 2. element is which erp system is in action
-                    # 3. element is where to store the t solution
-                    # 0 is the "main solution", 1 and 2 are "dummy solutions". 1 is erp with no two year rule, 2 is no erp
-
-                    #if transitions.elig(st) == 1: # if eligible to erp we need to recalculate
-                    if transitions.state_translate(st,'elig',par) == 1:
-
-                        if transitions.age(t+1) >= 65: # oap
-                            egm.all_egm(t,st,sol,par,[0,0,0]) # 1. main sol
-                            
-                        elif transitions.age(t+1) == 64: # erp with two year rule
-                            retirement = [[0,0,0],[0,1,1],[0,2,2]] # 1. main sol, 2. sol if no two year rule, 3. sol if no erp
-                            for ir in range(len(retirement)):
-                                egm.all_egm(t,st,sol,par,retirement[ir])                                                                        
-
-                        elif 62 <= transitions.age(t+1) <= 63: # erp with two year rule
-                            retirement = [[0,0,0],[1,1,1],[2,2,2]] # 1. main sol, 2. sol if no two year rule, 3. sol if no erp
-                            for ir in range(len(retirement)):   
-                                egm.all_egm(t,st,sol,par,retirement[ir])
-                                                    
-                        elif transitions.age(t+1) == 61: # jump to erp without two year rule
-                            retirement = [[1,1,0],[2,2,2]] # 1. main sol, 2. sol if no erp
-                            for ir in range(len(retirement)):   
-                                egm.all_egm(t,st,sol,par,retirement[ir])
-
-                        elif transitions.age(t+1) == 60: # erp without two year rule
-                            retirement = [[0,1,0],[2,2,2]] # 1. main sol, 2. sol if no erp
-                            for ir in range(len(retirement)):  
-                                egm.all_egm(t,st,sol,par,retirement[ir])
-
-                        elif transitions.age(t+1) == 59: # jump to no erp
-                            egm.all_egm(t,st,sol,par,[2,2,0]) # 1. main sol                     
-
-                        elif transitions.age(t+1) < 59: # no erp
-                            egm.all_egm(t,st,sol,par,[0,2,0]) # 1. main sol  
-
-                    else: # if not eligible to erp
-                        egm.all_egm(t,st,sol,par,[0,2,0]) # 1. main sol is no erp
+                    egm.post_and_egm(t,st,sol,par,[0,2,0]) # take t+1 sol from main sol, assume no erp, store t sol in main sol                    
 
 
     ############
@@ -404,17 +369,18 @@ class RetirementModelClass(ModelClass):
         sim.m[0,:] = par.simM_init        
         sim.d[0,:] = np.ones(par.simN) # all is working at t=0
 
-        # c. draw random shocks
+        # c. states
+        sim.states = par.simStates
+
+        # d. draw random shocks
         sim.unif = np.random.rand(par.simT,par.simN) # taste shocks
         sim.deadP = np.random.rand(par.simT,par.simN) # death probs
-
-        # d. states
-        sim.states = par.simStates
-        #np.random.randint(8,size=par.simN,dtype=int) # uniform between 0 and 15
-        #sim.states[0:900] = np.random.randint(4,size=900,dtype=int)
-        #sim.states[900:1000] = np.random.randint(4,8,size=100,dtype=int)
-        #sim.states[500:985] = np.random.randint(8,12,size=485,dtype=int)
-        #sim.states[985:1000] = np.random.randint(12,16,size=15,dtype=int)
+        sim.inc_shock = np.nan*np.zeros((par.Tr-1,par.simN)) # income shocks
+        for i in range(len(sim.states)): 
+            if transitions.state_translate(sim.states[i],'male',par) == 1:
+                sim.inc_shock[:,i] = np.random.lognormal(-0.5*(par.sigma_xi_men**2),par.sigma_xi_men,size=par.Tr-1)
+            else:
+                sim.inc_shock[:,i] = np.random.lognormal(-0.5*(par.sigma_xi_women**2),par.sigma_xi_women,size=par.Tr-1)
 
 
     def simulate(self):

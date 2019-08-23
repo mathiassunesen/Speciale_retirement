@@ -7,10 +7,6 @@ def func(c,d,st,par):
     if (d == 1): # working
         leisure = 0
     else: # retired
-        # dummies
-        #ma = transitions.male(st)
-        #hs = transitions.high_skilled(st)
-        #ch = transitions.children(st)
         ma = transitions.state_translate(st,'male',par)
         hs = transitions.state_translate(st,'high_skilled',par)
         ch = transitions.state_translate(st,'children',par)                

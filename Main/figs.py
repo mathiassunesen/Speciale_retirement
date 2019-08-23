@@ -11,7 +11,7 @@ colors = prop_cycle.by_key()["color"]
 # local modules
 import transitions
 
-def policy(model,ax,time,policy_type='c',d_choice=[0,1],states=[0]):
+def policy(model,ax,time,policy_type='c',d_choice=[0,1],states=[0],xlim=None):
 
     # convert to list
     if type(time) == int:
@@ -27,11 +27,9 @@ def policy(model,ax,time,policy_type='c',d_choice=[0,1],states=[0]):
     # b. policy type
     if policy_type == 'c':
         policy = sol.c[:,:,:,:,0] # zero in the end to get the main sol
-        lab = '$C_t(t=0, d=1)$'
         ylab = '$C_t$'
     elif policy_type == 'v':
         policy = sol.v[:,:,:,:,0]
-        lab = '$v_t$'
         ylab = '$v_t$'
     m = sol.m[:,:,:,:,0]
 
@@ -39,61 +37,26 @@ def policy(model,ax,time,policy_type='c',d_choice=[0,1],states=[0]):
     if states == 'all':
         states = np.arange(len(model.par.states))
     
-    # c. loop over time
+    # d. loop over time
     for t in time:
         for st in states:   
             for d in d_choice:
                 # plot
+                if policy_type == 'c':
+                    lab = '$C_t(t = {}, d = {})$'.format(t,d)
+                elif policy_type == 'v':
+                    lab = '$v_t(t = {}, d = {})$'.format(t,d)
                 ax.plot(m[t,st,:,d], policy[t,st,:,d], label=lab)
 
-    #ax.set_title(f'($t = {i}$)',pad=10)
-    # d. details
+    # e. details
+    if xlim == None:
+        pass
+    else:
+        ax.set_xlim(xlim)
     ax.legend()
     ax.grid(True)
     ax.set_xlabel('$m_t$')
     ax.set_ylabel(ylab)
-
-def cons_choice(model,t,st,choice='work'):
-    
-    # a. unpack
-    par = model.par
-    sol = model.sol
-    poc = par.poc
-            
-    # extract right variables
-    if choice=='work':
-        m = sol.m[:,st,:,1]
-        c = sol.c[:,st,:,1]
-    else:
-        m = sol.m[:,st,:,0]
-        c = sol.c[:,st,:,0]        
-            
-    # convert to list
-    if type(t) == int:
-        t = [t]
-        
-    # c. figure
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
-        
-    # d. plot consumption
-    for i in t:
-        ax.plot(m[i],c[i],label=(f'($t = {i}$)'))  
-        
-    if choice=='work':
-        ax.set_title('working')
-    else:
-        ax.set_title('retired')        
-        
-    # f. details
-    ax.legend()
-    ax.grid(True)
-    ax.set_xlabel('$m_t$')
-    #ax.set_xlim(0,15)
-    ax.set_ylabel('$C_t$')
-    #ax.set_ylim(0,10)
-        
-    plt.show()
 
 def lifecycle(model,ax,vars=['m','c','a'],ages=[57,68]):
 
@@ -114,6 +77,7 @@ def lifecycle(model,ax,vars=['m','c','a'],ages=[57,68]):
             warnings.simplefilter("ignore", category=RuntimeWarning)
             ax.plot(x,np.nanmean(simdata,axis=1),lw=2,label=simvardict[i])
     
+    # c. details
     ax.legend()
     ax.grid(True)    
     ax.set_xlabel('Age')
@@ -136,6 +100,7 @@ def retirement_probs(model,ax,ages=[57,68]):
     x = np.arange(ages[0], ages[1]+1)
     ax.plot(x,avg_probs,'r')
     
+    # c. details
     ax.grid(True)    
     ax.set_xticks(x)
     ax.set_ylim(top=0.35)

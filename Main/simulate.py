@@ -36,6 +36,7 @@ def lifecycle(sim,sol,par):
     # random shocks
     unif = sim.unif
     deadP = sim.deadP
+    inc_shock = sim.inc_shock
 
     # states
     st = sim.states
@@ -54,7 +55,7 @@ def lifecycle(sim,sol,par):
             # b. working
             if (t < par.Tr-1 and d[t,i] == 1):
                 if (t > 0):
-                    m[t,i] = par.R*a[t-1,i] + transitions.income(t,st[i],par)
+                    m[t,i] = par.R*a[t-1,i] + transitions.income(t,st[i],par,inc_shock[t,i])
 
                 # b.1 retirement and consumption choice
                 for id in range(2):
@@ -84,7 +85,7 @@ def lifecycle(sim,sol,par):
             
             # c. retired
             else:            
-                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,st[i],np.array([a[t-1,i]]),ret_age[i],par)
+                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,st[i],np.array([a[t-1,i]]),ret_age[i],par) # pass a as array, since otherwise pension does not work
                 c[t,i] = linear_interp.interp_1d(m_sol[t,st[i],:,0],c_sol[t,st[i],:,0],m[t,i])
                 if (t < par.simT-1): # if not last period
                     d[t+1,i] = 0 # still retired                

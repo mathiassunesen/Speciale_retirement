@@ -11,7 +11,7 @@ import post_decision
 import transitions
 
 @njit(parallel=True)
-def is_sorted(a): # fast implementation
+def is_sorted(a):
     for i in range(a.size-1):
          if a[i+1] < a[i]:
                return False
@@ -98,10 +98,56 @@ def points_on_constraint(t,st,d,sol,par,retirement):
 
 
 @njit(parallel=True)
-def all_egm(t,st,sol,par,retirement):
-    """run all functions"""
+def post_and_egm(t,st,sol,par,retirement):
+    """run both post decision and egm for retired and working"""
 
     post_decision.compute_retired(t,st,sol,par,retirement)
     solve_bellman_retired(t,st,sol,par,retirement)  
     post_decision.compute_work(t,st,sol,par)                    
     solve_bellman_work(t,st,sol,par)   
+
+@njit(parallel=True)
+def recalculate(t,st,sol,par):
+    """recalculate solution to keep track of eligibility of erp and two year rule, 
+       which depends on when one retires"""
+
+    # in order to keep track of eligibility of erp and two year rule we recalculate erp in the relevant years
+    # remember the three options are:
+    # 1. erp with two year rule if retirement_age >= 62
+    # 2. erp with no two year rule if 60 <= retirement_age <= 61
+    # 3. no erp if retirement_age < 60
+
+    # This is done with the "retirement lists"
+    # 1. element is where to get the t+1 solution from
+    # 2. element is which erp system is in action
+    # 3. element is where to store the t solution
+    # 0 is the "main solution", 1 and 2 are "ad hoc/extra solutions". 1 is erp with no two year rule, 2 is no erp       
+
+    # This is the first period, where the pension payment can differ depending on the retirement age
+    # If one retires now one gets erp with two year rule, so this is the main solution
+    # But we also need to store a solution, where agents get erp without two year rule and no erp at all
+    # These solutions are then used later on                     
+    if transitions.age(t+1) == 64:
+        retirement = [[0,0,0],[0,1,1],[0,2,2]] # Calculates 3 solutions: full erp, erp without two year rule, no erp
+        for ir in range(len(retirement)):
+            post_and_egm(t,st,sol,par,retirement[ir])                                                                     
+
+    elif 62 <= transitions.age(t+1) <= 63: 
+        retirement = [[0,0,0],[1,1,1],[2,2,2]]
+        for ir in range(len(retirement)):   
+            post_and_egm(t,st,sol,par,retirement[ir])
+                                                    
+    # Now we jump, so if agents retire now they don't satisfy the two year rule
+    elif transitions.age(t+1) == 61:
+        retirement = [[1,1,0],[2,2,2]] # Calculates 2 solutions, since full erp is no longer relevant
+        for ir in range(len(retirement)):   
+            post_and_egm(t,st,sol,par,retirement[ir])
+
+    elif transitions.age(t+1) == 60:
+        retirement = [[0,1,0],[2,2,2]]
+        for ir in range(len(retirement)):  
+            post_and_egm(t,st,sol,par,retirement[ir])
+
+    # Now we jump, so if agent retire now they don't receive erp
+    elif transitions.age(t+1) == 59: 
+        post_and_egm(t,st,sol,par,[2,2,0]) # Only 1 relevant solution
