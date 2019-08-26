@@ -363,7 +363,8 @@ class RetirementModelClass(ModelClass):
 
         # interpolation
         sim.c_interp = np.nan*np.zeros((par.simT,par.simN,2))
-        sim.v_interp = np.nan*np.zeros((par.simT,par.simN,2))    
+        sim.v_interp = np.nan*np.zeros((par.simT,par.simN,2)) 
+        sim.euler = np.nan*np.zeros((par.simT-1,par.simN))
 
         # b. initialize m and d
         sim.m[0,:] = par.simM_init        
@@ -383,7 +384,7 @@ class RetirementModelClass(ModelClass):
                 sim.inc_shock[:,i] = np.random.lognormal(-0.5*(par.sigma_xi_women**2),par.sigma_xi_women,size=par.Tr-1)
 
 
-    def simulate(self):
+    def simulate(self,accuracy_test=False):
         """ simulate model """
 
         # a. allocate memory and draw random numbers
@@ -391,7 +392,7 @@ class RetirementModelClass(ModelClass):
 
         # b. simulate
         self.par.simT = self.par.T
-        simulate.lifecycle(self.sim,self.sol,self.par)
+        simulate.lifecycle(self.sim,self.sol,self.par,accuracy_test)
 
 
     def test(self):
@@ -419,4 +420,4 @@ from consav import runtools
 runtools.write_numba_config(disable=1,threads=8)
 model = RetirementModelClass(name='baseline',solmethod='egm')
 model.solve()
-model.simulate()
+model.simulate(accuracy_test=True)

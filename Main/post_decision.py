@@ -29,9 +29,10 @@ def compute_retired(t,st,sol,par,retirement):
     a = par.grid_a
     m_plus = par.R*a + transitions.pension(t+1,st,a,retirement[1],par)        
 
-    # b. interpolate       
-    linear_interp.interp_1d_vec(m,c,m_plus,c_plus_interp)
-    linear_interp.interp_1d_vec(m,v,m_plus,v_plus_interp)     
+    # b. interpolate   
+    prep = linear_interp.interp_1d_prep(len(m))    
+    linear_interp.interp_1d_vec_mon(prep,m,c,m_plus,c_plus_interp)
+    linear_interp.interp_1d_vec_mon_rep(prep,m,v,m_plus,v_plus_interp)     
 
     # c. next period marginal utility
     marg_u_plus = utility.marg_func(c_plus_interp,par)
@@ -73,20 +74,21 @@ def compute_work(t,st,sol,par):
     # b. loop over GH nodes
     vp_raw = np.zeros_like(v_plus_raw)
     avg_marg_u_plus = np.zeros_like(q)
-    for i in range(len(xi)):
+    for i in prange(len(xi)):
         m_plus = Ra + transitions.income(t+1,st,par,xi[i]) # m_plus is next period resources therefore income(t+1)
 
         # 1. interpolate and logsum
-        for id in prange(2): # in parallel
-            linear_interp.interp_1d_vec(m[:,id],c[:,id],m_plus,c_plus_interp[:,id])
-            linear_interp.interp_1d_vec(m[:,id],v[:,id],m_plus,v_plus_interp[:,id])
+        prep = linear_interp.interp_1d_prep(len(m))
+        for id in range(2): # in parallel
+            linear_interp.interp_1d_vec_mon(prep,m[:,id],c[:,id],m_plus,c_plus_interp[:,id])
+            linear_interp.interp_1d_vec_mon_rep(prep,m[:,id],v[:,id],m_plus,v_plus_interp[:,id])
 
         logsum,prob = funs.logsum_vec(v_plus_interp,par)
         logsum = logsum[:,0]
         prob = prob[:,0]
 
         # 2. integrate out shocks
-        vp_raw += w[i]*logsum # store v_plus_raw
+        vp_raw += w[i]*logsum 
         marg_u_plus = prob*utility.marg_func(c_plus_interp[:,0],par) + (1-prob)*utility.marg_func(c_plus_interp[:,1],par)
         avg_marg_u_plus += w[i]*marg_u_plus
 
