@@ -131,10 +131,10 @@ def timings(funcs, names, store, Ntimes, unit, ndigits):
 def create_states(model,sex,elig_frac,hs_frac,ch_frac):
     
     # solve for the optimal numbers
-    x = states_sol(model,sex,elig_frac,hs_frac,ch_frac)
+    x,add = states_sol(model,sex,elig_frac,hs_frac,ch_frac)
     
     # create array for states
-    mm = states_array(x,sex)
+    mm = states_array(x,sex,add)
     
     # check fractions
     print('fractions:', check_fracs(mm,model))
@@ -148,11 +148,22 @@ def states_sol(model,sex,elig_frac,hs_frac,ch_frac):
 
     # set up equation
     # lhs
-    if sex == 'male':
-        states = model.par.states[8:]
-    elif sex == 'female':
-        states = model.par.states[:8]
-    A = np.transpose(np.array(states))
+    if len(model.par.states) > 8:
+        if sex == 'male':
+            states = model.par.states[8:]
+        else:
+            states = model.par.states[:8]
+
+        add = 8
+    
+    else:
+        states = model.par.states
+        add = 0
+    
+    if type(states) == list:
+        A = np.transpose(np.array(states))
+    else:
+        A = np.transpose(states)
     A[0,:] = 1 # assure 1 col is ones
 
     # rhs
@@ -164,16 +175,16 @@ def states_sol(model,sex,elig_frac,hs_frac,ch_frac):
     # solution
     x, rnorm = nnls(A,b)
     assert rnorm<=1e-6, 'residual is not zero' # assure residual is zero
-    return x
+    return x,add
 
-def states_array(x, sex):
+def states_array(x, sex, add):
     
     lst = []
     x = np.around(x)
     x = x.astype(int)
 
     if sex == 'male':
-        add = 8
+        pass # gets add as argument
     elif sex == 'female':
         add = 0
 

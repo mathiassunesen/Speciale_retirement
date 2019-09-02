@@ -2,12 +2,12 @@ import numpy as np
 from numba import njit, prange
 
 @njit(parallel=True)
-def age(t): 
-    return t+57
+def age(t,par): 
+    return t+par.start_T
 
 @njit(parallel=True)
-def inv_age(age): 
-    return age-57
+def inv_age(age,par): 
+    return age-par.start_T
 
 
 @njit(parallel=True)
@@ -18,39 +18,43 @@ def state_translate(st,ind,par):
         return 0    
 
 @njit(parallel=True)
-def oap(t): # folkepension
-    return 61152 + 61560
+def oap(t,par): # folkepension
+    return par.oap_base + par.oap_add 
 
 @njit(parallel=True)
-def pension(t,st,a,retirement,par): # efterløn
+def pension(t,st,a,retirement,par):
 
-    pens = np.zeros_like(a)
+    pens = np.zeros(a.size)
 
-    if age(t) >= 65:
-        pens[:] = oap(t)
+    if age(t,par) >= 65:
+        pens[:] = oap(t,par)
     
     else:
         if retirement == 0: # two year rule
-            pens[:] = 182780  
+            pens[:] = par.erp_high  
         elif retirement == 1: # no two year rule
             priv = priv_pension(t,st,a,par)
-            for i in prange(len(priv)):
+            for i in range(len(priv)):
                 pens[i] = max(0,166400 - 0.6*0.05*max(0,priv[i] - 12600))
         elif retirement == 2: # no erp
             pass        
     
     return pens/100000
 
+
 @njit(parallel=True)
 def priv_pension(t,st,a,par):
 
-    priv = np.zeros_like(a)
-    ag = age(t)
+    priv = np.zeros(a.size)
+    if a.size == 1: # convert to array - to be compatible with simulate, which is loop based
+        a = np.array([a])
+        
+    ag = age(t,par)
     hs = state_translate(st,'high_skilled',par)
     ch = state_translate(st,'children',par)
     
-    for i in prange(len(priv)):
-        if a[i] <= 1e-6:
+    for i in range(len(priv)):
+        if a[i] <= par.tol:
             pass
         else:       
             lw = np.log(a[i])
@@ -62,22 +66,10 @@ def priv_pension(t,st,a,par):
         
     return priv
 
-@njit(parallel=True)
-def labor_income(t,st,par,shock):
-    ag = age(t)
-    hs = state_translate(st,'high_skilled',par)
-    ch = state_translate(st,'children',par)    
-
-    if state_translate(st,'male',par) == 1:
-        log_inc = -15.956 + 0.230*hs + 0.934*ag - 0.770*(ag**2)/100 + 0.151*ch
-    else:
-        log_inc = -18.937 + 0.248*hs + 1.036*ag - 0.856*(ag**2)/100 + 0.021*ch
-
-    return np.exp(log_inc)*shock/100000
 
 @njit(parallel=True)
 def income(t,st,par,shock):
-    inc = labor_income(t,st,par,shock)
+    inc = par.labor_inc_array[t,st]*shock # look up
     personal_income = (1 - par.tau_LMC)*inc
     taxable_income = personal_income - min(par.WD*inc,par.WD_upper)
     y_low_l = par.y_low + max(0,par.y_low-0)
@@ -88,11 +80,57 @@ def income(t,st,par,shock):
     T_u = max(0,min(par.tau_u,par.tau_max)*(personal_income - par.y_low_u))
     return personal_income - T_c - T_h - T_l - T_m - T_u
 
+
+@njit(parallel=True)
+def labor_income_fill_out(par):
+    num_st = len(par.states)
+    labor_inc_array = np.zeros((par.T,num_st))
+    for t in range(par.T):
+        for st in range(num_st):
+            labor_inc_array[t,st] = labor_income(t,st,par)
+    return labor_inc_array
+
+
+@njit(parallel=True)
+def labor_income(t,st,par):
+    ag = age(t,par)
+    hs = state_translate(st,'high_skilled',par)
+    ch = state_translate(st,'children',par)    
+
+    if state_translate(st,'male',par) == 1:
+        rlm = par.reg_labor_male
+        log_inc = rlm['cons'] + rlm['high_skilled']*hs + rlm['age']*ag + rlm['age2']*(ag**2)/100 + rlm['children']*ch
+    else:
+        rlf = par.reg_labor_female
+        log_inc = rlf['cons'] + rlf['high_skilled']*hs + rlf['age']*ag + rlf['age2']*(ag**2)/100 + rlf['children']*ch
+    return np.exp(log_inc)/100000
+
+
+@njit(parallel=True)
+def survival_look_up(t,st,par):
+    if state_translate(st,'male',par) == 1:
+        return par.survival_array[t,1]
+    else:
+        return par.survival_array[t,0]
+
+
+@njit(parallel=True)
+def survival_fill_out(par):
+    survival_array = np.zeros((par.T,2)) # only depends age and gender
+    for t in range(par.T):
+        for st in range(2): # first is women and last is men
+            survival_array[t,st] = survival(t,st,par)
+    return survival_array
+
+
 @njit(parallel=True)
 def survival(t,st,par):
-    ag = age(t)
-    if state_translate(st,'male',par) == 1:
-        tmp = min(1,np.exp(-10.338 + 0.097*ag))
+    ag = age(t,par)
+
+    if st == 1:
+        rsm = par.reg_survival_male        
+        tmp = min(1,np.exp(rsm['cons'] + rsm['age']*ag))
     else:
-        tmp = min(1,np.exp(-11.142 + 0.103*ag))        
+        rsf = par.reg_survival_female            
+        tmp = min(1,np.exp(rsf['cons'] + rsf['age']*ag))
     return min(1,(1 - tmp))

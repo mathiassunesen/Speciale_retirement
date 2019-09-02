@@ -17,18 +17,147 @@ def is_sorted(a):
                return False
     return True
 
+
+
 @njit(parallel=True)
-def solve_bellman_retired(t,st,sol,par,retirement):
-    """solve the bellman equation using the endogenous grid method"""
+def solve_bellman_singles(t,st,ad,d,sol,par,retirement=[0,0,0]):
+    """ Solve the bellman equation using the endogenous grid method"""
+
+    # unpack solution
+    poc = par.poc # points on constraint
+    if retirement[2] == 0:
+        c = sol.c[t,st,ad,poc:] # leave/ignore points on constraint
+        m = sol.m[t,st,ad,poc:]
+        v = sol.v[t,st,ad,poc:]
+    else:
+        c = sol.c_dummy[t-par.dummy_t,poc:,:,retirement[2]-1] 
+        m = sol.m_dummy[t-par.dummy_t,poc:,:,retirement[2]-1]
+        v = sol.v_dummy[t-par.dummy_t,poc:,:,retirement[2]-1]        
+
+    # unpack rest
+    q = sol.q[:,:]
+    v_plus_raw = sol.v_plus_raw[:,:]        
+    pi = transitions.survival_look_up(t,st,par)   
+
+    # loop over the choices
+    for id in d:
+
+        # a. raw solution
+        c[:,id] = utility.inv_marg_func(q[:,id],par)
+        m[:,id] = par.grid_a + c[:,id]
+        v[:,id] = utility.func(c[:,id],id,st,par) + par.beta*(pi*v_plus_raw[:,id] + (1-pi)*par.gamma*par.grid_a)          
+
+        # b. reset c,m,v pointers
+        if retirement[0] != 0:
+            c = sol.c[t,st,ad,poc:]
+            m = sol.m[t,st,ad,poc:]
+            v = sol.v[t,st,ad,poc:]  
+
+        # c. upper envelope
+        if id == 1:
+
+            # prep
+            idx = np.argsort(m[:,id]) # this is our m_raw
+            
+            #1. check if upper envelope is necessary
+            if is_sorted(idx): # no need for upper envelope
+                pass
+
+            # 2. upper envelope
+            else: # upper envelope
+
+                # define raw
+                m_raw = m[:,id]
+                c_raw = c[:,id]
+                v_raw = v[:,id]
+                m[:,id] = m_raw[idx]
+                
+                # run upper envelope
+                print('envelope',t,st) # let me know if upper envelope is envoked
+                envelope = upperenvelope.create(utility.func)
+                envelope(par.grid_a,m_raw,c_raw,v_raw,m[:,id], # input
+                        c[:,id],v[:,id], # output
+                        id,st,par) # args for utility function 
+
+        # d. add points on constraint
+        points_on_constraint(t,st,ad,id,sol,par,retirement)
+
+    
+@njit(parallel=True)
+def points_on_constraint(t,st,ad,d,sol,par,retirement=[0,0,0]):
+    """ Add points on the constraint"""
+
+    # unpack (helps numba optimize)
+    tol = par.tol # tolerance level
+    poc = par.poc # points on constraint
+    if retirement[2] == 0 or d == 1:
+        low_c = sol.c[t,st,ad,poc,d] # lowest point of the inner solution
+        c = sol.c[t,st,ad,:poc,d] # only consider points on constraint
+        m = sol.m[t,st,ad,:poc,d]
+        v = sol.v[t,st,ad,:poc,d]
+    else:
+        low_c = sol.c_dummy[t-par.dummy_t,poc,d,retirement[2]-1] 
+        c = sol.c_dummy[t-par.dummy_t,:poc,d,retirement[2]-1] 
+        m = sol.m_dummy[t-par.dummy_t,:poc,d,retirement[2]-1]
+        v = sol.v_dummy[t-par.dummy_t,:poc,d,retirement[2]-1]        
+
+    # add points on constraint
+    if low_c > tol:
+        c[:] = np.linspace(tol,low_c-tol,poc)
+    else: # a small fix if low_c is lower than tol
+        c[:] = np.linspace(low_c/3,low_c/2,poc)
+    m[:] = c[:]
+
+    # compute value-of-choice
+    post_decision.value_of_choice(t,st,ad,d,m,c,v,sol,par,retirement)
+
+
+@njit(parallel=True)
+def solve(t,st,ad,sol,par,retirement=[0,0,0]):
+    """ wrapper"""
+
+    post_decision.compute_singles(t,st,ad,[0,1],sol,par,retirement)
+    solve_bellman_singles(t,st,ad,[0,1],sol,par,retirement)
+    #post_decision.compute_retired(t,st,ad,sol,par,retirement)
+    #solve_bellman_retired(t,st,ad,sol,par,retirement)  
+    #post_decision.compute_work(t,st,ad,sol,par)                    
+    #solve_bellman_work(t,st,ad,sol,par)   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@njit(parallel=True)
+def solve_bellman_retired(t,st,ad,sol,par,retirement=[0,0,0]):
+    """ Solve the bellman equation if retired using the endogenous grid method"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    c = sol.c[t,st,poc:,0,retirement[2]] # leave/ignore points on constraint
-    m = sol.m[t,st,poc:,0,retirement[2]]
-    v = sol.v[t,st,poc:,0,retirement[2]]
-    q = sol.q[t,st,:,0,retirement[2]]
-    v_plus_raw = sol.v_plus_raw[t,st,:,0,retirement[2]]
-    pi = transitions.survival(t,st,par)     
+    if retirement[2] == 0:
+        c = sol.c[t,st,ad,poc:,0] # leave/ignore points on constraint
+        m = sol.m[t,st,ad,poc:,0]
+        v = sol.v[t,st,ad,poc:,0]
+    else:
+        c = sol.c_dummy[t-par.dummy_t,poc:,0,retirement[2]-1] 
+        m = sol.m_dummy[t-par.dummy_t,poc:,0,retirement[2]-1]
+        v = sol.v_dummy[t-par.dummy_t,poc:,0,retirement[2]-1]
+        
+    q = sol.q[:,0]
+    v_plus_raw = sol.v_plus_raw[:,0]        
+    pi = transitions.survival_look_up(t,st,par)     
 
     # a. solution
     c[:] = utility.inv_marg_func(q,par)
@@ -36,20 +165,20 @@ def solve_bellman_retired(t,st,sol,par,retirement):
     v[:] = utility.func(c,0,st,par) + par.beta*(pi*v_plus_raw + (1-pi)*par.gamma*par.grid_a)   
 
     # b. add points on constraint
-    points_on_constraint(t,st,0,sol,par,retirement)    
+    points_on_constraint(t,st,ad,0,sol,par,retirement)    
 
 @njit(parallel=True)
-def solve_bellman_work(t,st,sol,par):
-    """solve the bellman equation using the endogenous grid method"""
+def solve_bellman_work(t,st,ad,sol,par):
+    """ Solve the bellman equation if working using the endogenous grid method"""
 
     # unpack (helps numba optimize)
     poc = par.poc # points on constraint
-    c = sol.c[t,st,poc:,1,0] # ignore/leave points on constraint
-    m = sol.m[t,st,poc:,1,0]
-    v = sol.v[t,st,poc:,1,0]
-    q = sol.q[t,st,:,1,0]
-    v_plus_raw = sol.v_plus_raw[t,st,:,1,0]
-    pi = transitions.survival(t,st,par)     
+    c = sol.c[t,st,ad,poc:,1] # ignore/leave points on constraint
+    m = sol.m[t,st,ad,poc:,1]
+    v = sol.v[t,st,ad,poc:,1]
+    q = sol.q[:,1]
+    v_plus_raw = sol.v_plus_raw[:,1]
+    pi = transitions.survival_look_up(t,st,par)     
 
     # a. raw solution
     c_raw = utility.inv_marg_func(q,par)
@@ -64,90 +193,11 @@ def solve_bellman_work(t,st,sol,par):
         c[:] = c_raw
         v[:] = v_raw
     else:
-        print('envelope')
+        print('envelope',t,st)
         envelope = upperenvelope.create(utility.func)
         envelope(par.grid_a,m_raw,c_raw,v_raw,m, # input
                  c,v, # output
                  1,par) # args for utility function
 
     # c. add points on constraint 
-    points_on_constraint(t,st,1,sol,par,[0,0,0])
-    
-@njit(parallel=True)
-def points_on_constraint(t,st,d,sol,par,retirement):
-    """add points on the constraint"""
-
-    # unpack (helps numba optimize)
-    poc = par.poc # points on constraint
-    low_c = sol.c[t,st,poc,d,retirement[2]] # lowest point of the inner solution
-    c = sol.c[t,st,:poc,d,retirement[2]] # only consider points on constraint
-    m = sol.m[t,st,:poc,d,retirement[2]]
-    v = sol.v[t,st,:poc,d,retirement[2]]
-
-    # add points on constraint
-    if low_c > 1e-6:
-        c[:] = np.linspace(1e-6,low_c-1e-6,poc)
-    else:
-        c[:] = np.linspace(low_c/3,low_c/2,poc)
-    m[:] = c[:]
-    
-    if d == 0:
-        v[:] = post_decision.value_of_choice_retired(t,st,m,c,sol,par,retirement)
-    else:
-        v[:] = post_decision.value_of_choice_work(t,st,m,c,sol,par)
-
-
-@njit(parallel=True)
-def post_and_egm(t,st,sol,par,retirement):
-    """run both post decision and egm for retired and working"""
-
-    post_decision.compute_retired(t,st,sol,par,retirement)
-    solve_bellman_retired(t,st,sol,par,retirement)  
-    post_decision.compute_work(t,st,sol,par)                    
-    solve_bellman_work(t,st,sol,par)   
-
-@njit(parallel=True)
-def recalculate(t,st,sol,par):
-    """recalculate solution to keep track of eligibility of erp and two year rule, 
-       which depends on when one retires"""
-
-    # in order to keep track of eligibility of erp and two year rule we recalculate erp in the relevant years
-    # remember the three options are:
-    # 1. erp with two year rule if retirement_age >= 62
-    # 2. erp with no two year rule if 60 <= retirement_age <= 61
-    # 3. no erp if retirement_age < 60
-
-    # This is done with the "retirement lists"
-    # 1. element is where to get the t+1 solution from
-    # 2. element is which erp system is in action
-    # 3. element is where to store the t solution
-    # 0 is the "main solution", 1 and 2 are "ad hoc/extra solutions". 1 is erp with no two year rule, 2 is no erp       
-
-    # This is the first period, where the pension payment can differ depending on the retirement age
-    # If one retires now one gets erp with two year rule, so this is the main solution
-    # But we also need to store a solution, where agents get erp without two year rule and no erp at all
-    # These solutions are then used later on                     
-    if transitions.age(t+1) == 64:
-        retirement = [[0,0,0],[0,1,1],[0,2,2]] # Calculates 3 solutions: full erp, erp without two year rule, no erp
-        for ir in range(len(retirement)):
-            post_and_egm(t,st,sol,par,retirement[ir])                                                                     
-
-    elif 62 <= transitions.age(t+1) <= 63: 
-        retirement = [[0,0,0],[1,1,1],[2,2,2]]
-        for ir in range(len(retirement)):   
-            post_and_egm(t,st,sol,par,retirement[ir])
-                                                    
-    # Now we jump, so if agents retire now they don't satisfy the two year rule
-    elif transitions.age(t+1) == 61:
-        retirement = [[1,1,0],[2,2,2]] # Calculates 2 solutions, since full erp is no longer relevant
-        for ir in range(len(retirement)):   
-            post_and_egm(t,st,sol,par,retirement[ir])
-
-    elif transitions.age(t+1) == 60:
-        retirement = [[0,1,0],[2,2,2]]
-        for ir in range(len(retirement)):  
-            post_and_egm(t,st,sol,par,retirement[ir])
-
-    # Now we jump, so if agent retire now they don't receive erp
-    elif transitions.age(t+1) == 59: 
-        post_and_egm(t,st,sol,par,[2,2,0]) # Only 1 relevant solution
+    points_on_constraint(t,st,ad,1,sol,par)
