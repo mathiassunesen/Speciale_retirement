@@ -184,4 +184,30 @@ class SimulatedMinimumDistance():
 
 
 
-        
+# add_str = '_est'
+# est_par = ("rho")
+# est_par_tex = (r'$\hat{\rho}$')
+
+# # moment function
+# from numba import njit
+
+# @njit
+# def mom_fun(data):
+#     return np.log(np.nanmean(data.c, axis=1))
+
+# # create data
+# from Model import RetirementModelClass
+# model = RetirementModelClass(states=[(1,1,1,1)])
+# model.solve()
+# model.simulate()
+# mom_data = mom_fun(model.sim)
+# weight = np.eye(len(mom_data))
+# theta0 = [1.5] 
+
+# # Estimate the baseline model
+# model_base = model
+
+# smd_base = SimulatedMinimumDistance(model_base,mom_data,mom_fun,print_iter=True,options={'disp':True})
+# smd_base.est_par = est_par
+# smd_base.estimate(theta0,weight)
+# theta_base = smd_base.est

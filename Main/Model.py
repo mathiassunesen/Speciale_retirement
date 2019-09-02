@@ -69,6 +69,7 @@ class RetirementModelClass(ModelClass):
         self.intel_vs_version = 'vs2017'
         self.couples = couples  # type of model
         self.model_run = 0      # if couple model, we have to solve model 2 times (first single then couple)
+        self.prep = True
 
         # a. define subclasses
         parlist = [ # (name,numba type), parameters, grids etc.
@@ -377,8 +378,6 @@ class RetirementModelClass(ModelClass):
         self.par.xi_men,self.par.xi_men_w = funs.GaussHermite_lognorm(self.par.sigma_xi_men,self.par.Nxi)
         self.par.xi_women,self.par.xi_women_w = funs.GaussHermite_lognorm(self.par.sigma_xi_women,self.par.Nxi)        
 
-        # c. set seed
-        np.random.seed(self.par.sim_seed)
 
     #########
     # solve #
@@ -457,7 +456,8 @@ class RetirementModelClass(ModelClass):
         sol = self.sol
 
         # a. allocate solution
-        self._solve_prep()
+        if self.prep:
+            self._solve_prep()
         
         # b. backwards induction
         for ad in par.age_dif:                  # loop over age differences for couples
@@ -554,6 +554,9 @@ class RetirementModelClass(ModelClass):
     def _simulate_prep(self):
         """ allocate memory for simulation and draw random numbers """
 
+        # set seed
+        np.random.seed(self.par.sim_seed)
+
         # prep
         par = self.par
         sim = self.sim
@@ -596,7 +599,8 @@ class RetirementModelClass(ModelClass):
         """ simulate model """
 
         # a. allocate memory and draw random numbers
-        self._simulate_prep()
+        if self.prep:
+            self._simulate_prep()
 
         # b. simulate
         self.par.simT = self.par.T
