@@ -1,5 +1,11 @@
-# Speciale_retirement
+Opdeles på par og singler
+Opdeles på efterlønsstatus (definition?)
+Opdeles på uddannelse
 
-# This is a new change
+Variabler (estimation):
+Tilbagetrækning (definition: Arbejdsmarkedsstatus)
+Nettoformue (til initialisering)
 
-#Hej
+Variabler (initial estimation, regressioner):
+Indkomst
+Privat pension (brug Thomas estimater)
