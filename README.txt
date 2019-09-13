@@ -1,7 +1,5 @@
 Opdeling:
-
 Opdeles på par og singler
-
 Opdeles på efterlønsstatus (definition?)
 
 Opdeles på uddannelse
