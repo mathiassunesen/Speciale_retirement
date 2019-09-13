@@ -2,8 +2,8 @@ import numpy as np
 from numba import njit, prange
 import time
 from prettytable import PrettyTable
-from scipy.interpolate import RegularGridInterpolator
 from consav import linear_interp
+import transitions
 
 def GaussHermite(n):
     return np.polynomial.hermite.hermgauss(n)
@@ -17,42 +17,22 @@ def GaussHermite_lognorm(sigma, n):
     assert(1 - sum(w*x) < 1e-8)
     return x,w    
 
-def logsum(v1, v2, sigma):
-
-    # 1. setup
-    V = np.stack((v1,v2), axis=1)
-
-    # 2. maximum over the discrete choices
-    mxm = np.amax(V, axis=1, keepdims=True)
-
-    # 3. logsum and probabilities
-    if abs(sigma) > 1e-10:
-        log_sum = mxm + sigma*np.log(np.sum(np.exp((V - mxm @ np.ones((1,2)))/sigma), 
-            axis=1, keepdims=True))
-        prob = np.exp((V - log_sum*np.ones((1,2)))/sigma)
-
-    else:
-        log_sum = mxm
-        prob = np.zeros(V.shape)
-        prob[np.arange(len(V)), np.argmax(V, axis=1)] = 1
-
-    return log_sum,prob
 
 @njit(parallel=True)
 def logsum_vec(V, par):
     
     # 1. setup
     sigma = par.sigma_eta
-    if len(V.shape) == 1: # to be compatible with simulate which is loop based
-        V = V.reshape(1,len(V))
+    # if len(V.shape) == 1: # to be compatible with simulate which is loop based
+    #     V = V.reshape(1,len(V))
 
     cols = V.shape[1]
 
     # 2. maximum over the discrete choices
-    if cols == 2: # 2 choices for singles
-        mxm = np.maximum(V[:,0],V[:,1]).reshape(len(V),1)
-    elif cols == 4: # 4 choices for couples
-        mxm = np.maximum(V[:,0],V[:,1],V[:,2],V[:,3]).reshape(len(V),1)        
+    #if cols == 2: # 2 choices for singles
+    mxm = np.maximum(V[:,0],V[:,1]).reshape(len(V),1)
+    # elif cols == 4: # 4 choices for couples
+    #     mxm = np.maximum(V[:,0],V[:,1],V[:,2],V[:,3]).reshape(len(V),1)        
 
     # 3. logsum and probabilities
     if abs(sigma) > 1e-10:
@@ -70,6 +50,33 @@ def logsum_vec(V, par):
                 prob[i,1] = 1 
 
     return logsum,prob
+
+
+def random_draws(sim,par):
+
+    # a. set seed
+    np.random.seed(par.sim_seed)
+
+    # b. random draws
+    sim.unif = np.random.rand(par.simT,par.simN)            # taste shocks
+    sim.deadP = np.random.rand(par.simT,par.simN)           # death probs
+    
+    # c. income shocks
+    sim.inc_shock = np.nan*np.zeros((par.Tr-1,par.simN))    # initalize
+    num_st = np.unique(sim.states)
+    for st in num_st:
+        mask = np.nonzero(sim.states==st)[0]
+        if transitions.state_translate(st,'male',par) == 1:
+            sim.inc_shock[:,mask] = np.random.lognormal(-0.5*(par.sigma_xi_men**2),par.sigma_xi_men,size=(par.Tr-1,mask.size))
+
+        else:
+            sim.inc_shock[:,mask] = np.random.lognormal(-0.5*(par.sigma_xi_women**2),par.sigma_xi_women,size=(par.Tr-1,mask.size))
+
+
+
+
+
+
 
 
 def my_timer(funcs,argu,names,Ntimes=100,unit='ms',ndigits=2,numba_disable=0,numba_threads=8):
@@ -128,10 +135,10 @@ def timings(funcs, names, store, Ntimes, unit, ndigits):
     return out,unit
 
 
-def create_states(model,sex,elig_frac,hs_frac,ch_frac):
+def create_states(model,sex,elig_frac,hs_frac):
     
     # solve for the optimal numbers
-    x,add = states_sol(model,sex,elig_frac,hs_frac,ch_frac)
+    x,add = states_sol(model,sex,elig_frac,hs_frac)
     
     # create array for states
     mm = states_array(x,sex,add)
@@ -140,7 +147,7 @@ def create_states(model,sex,elig_frac,hs_frac,ch_frac):
     print('fractions:', check_fracs(mm,model))
     return mm
 
-def states_sol(model,sex,elig_frac,hs_frac,ch_frac):
+def states_sol(model,sex,elig_frac,hs_frac):
     
     # imports
     import numpy as np
@@ -148,13 +155,13 @@ def states_sol(model,sex,elig_frac,hs_frac,ch_frac):
 
     # set up equation
     # lhs
-    if len(model.par.states) > 8:
+    if len(model.par.states) > 4:
         if sex == 'male':
-            states = model.par.states[8:]
+            states = model.par.states[4:]
         else:
-            states = model.par.states[:8]
+            states = model.par.states[:4]
 
-        add = 8
+        add = 4
     
     else:
         states = model.par.states
@@ -169,8 +176,7 @@ def states_sol(model,sex,elig_frac,hs_frac,ch_frac):
     # rhs
     elig = round(elig_frac*model.par.simN)
     hs = round(hs_frac*model.par.simN)
-    ch = round(ch_frac*model.par.simN)
-    b = np.array([model.par.simN, elig, hs, ch])
+    b = np.array([model.par.simN, elig, hs])
 
     # solution
     x, rnorm = nnls(A,b)
@@ -199,11 +205,10 @@ def check_fracs(mm,model):
     
     import transitions
 
-    fracs = np.zeros((len(mm),3))
+    fracs = np.zeros((len(mm),2))
 
     for i in range(len(mm)):
         fracs[i,0] = transitions.state_translate(mm[i],'elig',model.par)
         fracs[i,1] = transitions.state_translate(mm[i],'high_skilled',model.par)
-        fracs[i,2] = transitions.state_translate(mm[i],'children',model.par)
     
     return np.mean(fracs, axis=0)

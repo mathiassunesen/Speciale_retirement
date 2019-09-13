@@ -11,7 +11,7 @@ colors = prop_cycle.by_key()["color"]
 # local modules
 import transitions
 
-def policy(model,ax,var,time,states,age_dif,d_choice,xlim=None):
+def policy(model,ax,var,time,states,age_dif,d_choice,label=True,xlim=None,ylim=None):
 
     # a. convert to list
     if type(time) == int:
@@ -39,15 +39,19 @@ def policy(model,ax,var,time,states,age_dif,d_choice,xlim=None):
 
                     x = m[t,st,ad,:,d]
                     y = getattr(sol,var)[t,st,ad,:,d]
-                    lab = '${}(t = {}, d = {})$'.format(solvardict[var],t,d)
-                    ax.plot(x,y,label=lab)
+                    if label:
+                        lab = '${}(t = {}, d = {})$'.format(solvardict[var],t,d)
+                        ax.plot(x,y,label=lab)
+                    else:
+                        ax.plot(x,y)
 
     # e. details
-    if xlim == None:
-        pass
-    else:
+    if xlim != None:
         ax.set_xlim(xlim)
-    ax.legend()
+    if ylim != None:
+        ax.set_ylim(ylim)
+    if label:
+        ax.legend()
     ax.grid(True)
     ax.set_xlabel('$m_t$')
     ax.set_ylabel('${}$'.format(solvardict[var]))
@@ -82,15 +86,20 @@ def lifecycle(model,ax,vars=['m','c','a'],ages=[57,68]):
         ax.set_ylabel('100.000 DKR')
 
 
-def retirement_probs(model,ax,ages=[57,68]):
+def retirement_probs(model,ax,ages=[57,68],states='all'):
     
     # a. unpack
     sim = model.sim
     
     # b. figure
-    avg_probs = np.zeros(ages[1] - ages[0]+1)
-    for t in range(len(avg_probs)):
-        avg_probs[t] = np.mean(sim.probs[t])
+    avg_probs = np.zeros(ages[1] - ages[0]+1)   # initialize
+    if states=='all':    # average across all states
+        for t in range(len(avg_probs)):
+            avg_probs[t] = np.nanmean(sim.probs[t])
+    else:
+        for t in range(len(avg_probs)):
+            for st in states:
+                avg_probs[t] = np.nanmean(sim.probs[t,sim.states==st])
 
     x = np.arange(ages[0], ages[1]+1)
     ax.plot(x,avg_probs,'r')

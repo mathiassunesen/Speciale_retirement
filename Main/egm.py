@@ -1,8 +1,9 @@
+# global modules
 from numba import njit, prange
 import numpy as np
 
 # consav
-from consav import linear_interp # for linear interpolation
+from consav import linear_interp
 from consav import upperenvelope 
 
 # local modules
@@ -10,18 +11,25 @@ import utility
 import post_decision
 import transitions
 
+
 @njit(parallel=True)
 def is_sorted(a):
+    """ True if a is sorted, otherwise False"""
     for i in range(a.size-1):
          if a[i+1] < a[i]:
                return False
     return True
 
-
-
 @njit(parallel=True)
-def solve_bellman_singles(t,st,ad,d,sol,par,retirement=[0,0,0]):
-    """ Solve the bellman equation using the endogenous grid method"""
+def solve_bellman_singles(t,st,ad,d,sol,par,retirement):
+    """ solve the bellman equation for singles using the endogenous grid method
+    
+        Args:
+        
+            t=time, st=state, ad=age difference
+            d=retirement choice
+            sol=solution, par=parameters
+            retirement=list with info about erp status"""
 
     # unpack solution
     poc = par.poc # points on constraint
@@ -63,43 +71,50 @@ def solve_bellman_singles(t,st,ad,d,sol,par,retirement=[0,0,0]):
             if is_sorted(idx): # no need for upper envelope
                 pass
 
-            # 2. upper envelope
-            else: # upper envelope
+        #     # 2. upper envelope
+        #     else: # upper envelope
 
-                # define raw
-                m_raw = m[:,id]
-                c_raw = c[:,id]
-                v_raw = v[:,id]
-                m[:,id] = m_raw[idx]
+        #         # define raw
+        #         # m_raw = m[:,id]
+        #         # c_raw = c[:,id]
+        #         # v_raw = v[:,id]
+        #         # m[:,id] = m_raw[idx]
                 
-                # run upper envelope
-                print('envelope',t,st) # let me know if upper envelope is envoked
-                envelope = upperenvelope.create(utility.func)
-                envelope(par.grid_a,m_raw,c_raw,v_raw,m[:,id], # input
-                        c[:,id],v[:,id], # output
-                        id,st,par) # args for utility function 
+        #         # run upper envelope
+        #         # envelope = upperenvelope.create(utility.func)
+        #         # envelope(par.grid_a,m_raw,c_raw,v_raw,m[:,id],  # input
+        #         #         c[:,id],v[:,id],                        # output
+        #         #         id,st,par)                              # args for utility function 
 
         # d. add points on constraint
         points_on_constraint(t,st,ad,id,sol,par,retirement)
 
-    
+
 @njit(parallel=True)
-def points_on_constraint(t,st,ad,d,sol,par,retirement=[0,0,0]):
-    """ Add points on the constraint"""
+def points_on_constraint(t,st,ad,d,sol,par,retirement):
+    """ put points on constraint
+    
+        Args:
+        
+            t=time, st=state, ad=age difference
+            d=retirement choice
+            sol=solution, par=parameters
+            retirement=list with info about erp status"""    
 
     # unpack (helps numba optimize)
     tol = par.tol # tolerance level
     poc = par.poc # points on constraint
+    v_plus_interp = sol.v_plus_interp[:poc,:]    
     if retirement[2] == 0 or d == 1:
-        low_c = sol.c[t,st,ad,poc,d] # lowest point of the inner solution
-        c = sol.c[t,st,ad,:poc,d] # only consider points on constraint
+        low_c = sol.c[t,st,ad,poc,d]    # lowest point of the inner solution
+        c = sol.c[t,st,ad,:poc,d]       # only consider points on constraint
         m = sol.m[t,st,ad,:poc,d]
         v = sol.v[t,st,ad,:poc,d]
     else:
         low_c = sol.c_dummy[t-par.dummy_t,poc,d,retirement[2]-1] 
         c = sol.c_dummy[t-par.dummy_t,:poc,d,retirement[2]-1] 
         m = sol.m_dummy[t-par.dummy_t,:poc,d,retirement[2]-1]
-        v = sol.v_dummy[t-par.dummy_t,:poc,d,retirement[2]-1]        
+        v = sol.v_dummy[t-par.dummy_t,:poc,d,retirement[2]-1]      
 
     # add points on constraint
     if low_c > tol:
@@ -109,20 +124,15 @@ def points_on_constraint(t,st,ad,d,sol,par,retirement=[0,0,0]):
     m[:] = c[:]
 
     # compute value-of-choice
-    post_decision.value_of_choice(t,st,ad,d,m,c,v,sol,par,retirement)
+    post_decision.value_of_choice(t,st,ad,d,m,c,v,v_plus_interp,sol,par,retirement)
 
 
 @njit(parallel=True)
-def solve(t,st,ad,sol,par,retirement=[0,0,0]):
-    """ wrapper"""
+def solve_singles(t,st,ad,d,sol,par,retirement=[0,0,0]):
+    """ wrapper which calls both post_decision.compute_singles and egm.solve_bellman_singles"""
 
-    post_decision.compute_singles(t,st,ad,[0,1],sol,par,retirement)
-    solve_bellman_singles(t,st,ad,[0,1],sol,par,retirement)
-    #post_decision.compute_retired(t,st,ad,sol,par,retirement)
-    #solve_bellman_retired(t,st,ad,sol,par,retirement)  
-    #post_decision.compute_work(t,st,ad,sol,par)                    
-    #solve_bellman_work(t,st,ad,sol,par)   
-
+    post_decision.compute_singles(t,st,ad,d,sol,par,retirement)
+    solve_bellman_singles(t,st,ad,d,sol,par,retirement)  
 
 
 

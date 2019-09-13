@@ -184,30 +184,46 @@ class SimulatedMinimumDistance():
 
 
 
-# add_str = '_est'
-# est_par = ("rho")
-# est_par_tex = (r'$\hat{\rho}$')
-
 # # moment function
 # from numba import njit
 
 # @njit
 # def mom_fun(data):
-#     return np.log(np.nanmean(data.c, axis=1))
-
+#     low_noChild = np.mean(data.probs[:20, (data.states == 0) | (data.states == 4)], axis=1)*100
+#     low_Child = np.mean(data.probs[:20, (data.states == 1) | (data.states == 5)], axis=1)*100
+#     high_noChild = np.mean(data.probs[:20, (data.states == 2) | (data.states == 6)], axis=1)*100
+#     high_Child = np.mean(data.probs[:20, (data.states == 3) | (data.states == 7)], axis=1)*100
+#     return np.hstack((low_noChild, low_Child, high_noChild, high_Child))
+        
 # # create data
+# import itertools
 # from Model import RetirementModelClass
-# model = RetirementModelClass(states=[(1,1,1,1)])
+# states = list(itertools.product([0,1],repeat=4))
+# states = states[:8]
+# model = RetirementModelClass(states=states, a_max = 10, simN = 5000)
 # model.solve()
+
+# # Allocate states
+# #model.par.simStates = funs.create_states(model,'female',0.5,0.5,0.5)
+# ind = int(model.par.simN/8)
+# states = np.hstack((0*np.ones(ind), 1*np.ones(ind), 2*np.ones(ind), 3*np.ones(ind), 
+#                     4*np.ones(ind), 5*np.ones(ind), 6*np.ones(ind), 7*np.ones(ind)))
+# states = np.array(states, dtype=int)
+# model.par.simStates = states
 # model.simulate()
 # mom_data = mom_fun(model.sim)
+
+# # prep
 # weight = np.eye(len(mom_data))
-# theta0 = [1.5] 
+# true = [model.par.alpha_0_female, model.par.alpha_1, model.par.alpha_2]
+# theta0 = [i*3 for i in true]
+# add_str = '_est'
+# est_par = ("alpha_0_female", "alpha_1", "alpha_2") # remember to be list if only 1 var
 
 # # Estimate the baseline model
 # model_base = model
+# model_base.prep = False
 
-# smd_base = SimulatedMinimumDistance(model_base,mom_data,mom_fun,print_iter=True,options={'disp':True})
+# smd_base = SimulatedMinimumDistance(model_base,mom_data,mom_fun,print_iter=True,options={'disp':True,'maxiter':10})
 # smd_base.est_par = est_par
 # smd_base.estimate(theta0,weight)
-# theta_base = smd_base.est

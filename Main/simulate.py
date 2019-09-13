@@ -1,8 +1,9 @@
+# global modules
 import numpy as np
 from numba import njit, prange
 
  # consav
-from consav import linear_interp # for linear interpolation
+from consav import linear_interp
 
 # local modules
 import utility
@@ -10,20 +11,19 @@ import funs
 import transitions
 import post_decision
 
-@njit(parallel=True)
-def lifecycle(sim,sol,par,accuracy_test):
+
+def lifecycle(sim,sol,par):
     """ Simulate full life-cycle
         
         Args:
 
-            sim,sol,par=lists
-            accuracy_test=if True; calculate euler errors"""         
+            sim=simulation, sol=solution, par=parameters"""         
 
     # unpack (to help numba optimize)
     # solution
-    c_sol_full = sol.c[:,:,par.age_dif[0],:,:]
-    m_sol_full = sol.m[:,:,par.age_dif[0],:,:]
-    v_sol_full = sol.v[:,:,par.age_dif[0],:,:]        
+    c_sol = sol.c[:,:,par.age_dif[0],:,:]
+    m_sol = sol.m[:,:,par.age_dif[0],:,:]
+    v_sol = sol.v[:,:,par.age_dif[0],:,:]        
 
     # simulation
     c = sim.c
@@ -34,134 +34,207 @@ def lifecycle(sim,sol,par,accuracy_test):
     # dummies and probabilities
     alive = sim.alive
     probs = sim.probs
-    ret_age = sim.ret_age
+    ret_age = sim.ret_age                          
 
-    # interpolation
-    c_interp = sim.c_interp
-    v_interp = sim.v_interp  
-    euler = sim.euler                       
+    # states
+    states = sim.states
+    num_st = np.unique(states)
 
     # random shocks
     unif = sim.unif
     deadP = sim.deadP
-    inc_shock = sim.inc_shock
-
-    # states
-    st = sim.states
-
-    # misc
-    tol = par.tol
+    inc_shock = sim.inc_shock    
 
     # simulation
-    for t in range(par.simT):       # loop over time
-        for i in prange(par.simN):  # loop over individuals
+    for t in range(par.simT):   # loop over time
 
-            # a. check if alive
-            pi = transitions.survival_look_up(t,st[i],par)            
-            if  alive[t-1,i] == 0 or pi < deadP[t,i]:
-                alive[t,i] = 0 # Still dead
-                continue 
+        if t > 0:
+            alive[t,alive[t-1] == 0] = 0    # still dead
 
-            # b unpack time and state
-            m_sol = m_sol_full[t,st[i]]
-            c_sol = c_sol_full[t,st[i]]
-            v_sol = v_sol_full[t,st[i]]
-            st_i = st[i] # specific state                
-                          
-            # c. working
-            if (t < par.Tr-1 and d[t,i] == 1):  # if not retired
-                if (t > 0): # if not 1. period (where m is initialized)
+        for st in num_st:       # loop over states
+        
+            # 1. update alive
+            mask_st = np.nonzero(states==st)[0]             # mask of states
+            pi = transitions.survival_look_up(t,st,par)
+            alive[t,mask_st[pi < deadP[t,mask_st]]] = 0     # dead
 
-                    # update m
-                    m[t,i] = par.R*a[t-1,i] + transitions.income(t,st_i,par,inc_shock[t,i])
+            # 2. create masks
+            work = mask_st[(d[t,mask_st]==1) & (alive[t,mask_st]==1)]   # mask for state, work and alive
+            ret = mask_st[(d[t,mask_st]==0) & (alive[t,mask_st]==1)]    # mask for state, retired and alive            
 
-                # retirement and consumption choice
+            # 3. update m
+            if t > 0:               # m is initialized in 1. period
+                if t < par.Tr-1:    # if not forced retire
+                    m[t,work] = par.R*a[t-1,work] + transitions.income(t,st,par,inc_shock[t,work])
+
+                for ra in np.unique(ret_age[ret]):  # loop over retirement age (erp status)
+                    mask_ra = (ret_age[ret] == ra)
+                    m[t,ret[mask_ra]] = par.R*a[t-1,ret[mask_ra]] + transitions.pension(t,st,a[t-1,ret[mask_ra]],ra,par)
+                    # The above line could turn out to be problematic if a[t-1,ret[mask_ra]] is not an array (only has 1 observation)
+
+            # 4. working
+            if t < par.Tr-1 and work.size > 0:  # not forced to retire and working
+    
+                # a. interpolation
+                prep = linear_interp.interp_1d_prep(len(work))  
+                c_interp = np.nan*np.zeros((len(work),2))
+                v_interp = np.nan*np.zeros((len(work),2))  
+                idx = np.argsort(m[t,work]) # indices to sort back later
+                m_sort = np.sort(m[t,work]) # sort m so interp is faster
                 for id in range(2):
-                    c_interp[t,i,id] = linear_interp.interp_1d(m_sol[:,id],c_sol[:,id],m[t,i])
-                    v_interp[t,i,id] = linear_interp.interp_1d(m_sol[:,id],v_sol[:,id],m[t,i])
-                
-                prob = funs.logsum_vec(v_interp[t,i,:],par)[1]
-                probs[t+1,i] = prob[0,0] # save the retirement probability
-                            
-                if (prob[0,0] > unif[t,i]): # if prob of retiring exceeds threshold
-                    d[t+1,i] = 0 # retire
-                    c[t,i] = c_interp[t,i,0] # optimal consumption
-                    
-                    # update retirment age
-                    if transitions.state_translate(st_i,'elig',par) == 0:
-                        ret_age[i] = 2 # no erp
-                    elif transitions.age(t+1,par) >= 62:
-                        ret_age[i] = 0
-                    elif 60 <= transitions.age(t+1,par) <= 61:
-                        ret_age[i] = 1
+                    linear_interp.interp_1d_vec_mon(prep,m_sol[t,st,:,id],c_sol[t,st,:,id],m_sort,c_interp[:,id])
+                    linear_interp.interp_1d_vec_mon_rep(prep,m_sol[t,st,:,id],v_sol[t,st,:,id],m_sort,v_interp[:,id])
+
+                # sort back
+                c_interp = c_interp[np.argsort(idx),:]
+                v_interp = v_interp[np.argsort(idx),:]
+
+                # b. retirement probabilities
+                prob = funs.logsum_vec(v_interp,par)[1]
+                work_choice = prob[:,0] < unif[t,work]    
+                ret_choice = prob[:,0] > unif[t,work]
+
+                # c. optimal choices for today (consumption)
+                c[t,work[work_choice]] = c_interp[work_choice,1]
+                c[t,work[ret_choice]] = c_interp[ret_choice,0]
+
+                # d. optimal choices for tomorrow (retirement)
+                if t < par.simT-1:
+                    probs[t+1,work] = prob[:,0] # save retirement probability
+                    d[t+1,work[ret_choice]] = 0
+                    if t+1 >= par.Tr-1: # forced to retire
+                        d[t+1,work[work_choice]] = 0
                     else:
-                        ret_age[i] = 2
+                        d[t+1,work[work_choice]] = 1
 
-                else: # still working
-                    d[t+1,i] = 1 # work
-                    c[t,i] = c_interp[t,i,1] # optimal consumption 
+                # e. update retirement age (erp status)
+                if work[ret_choice].size > 0:
+                    if transitions.state_translate(st,'elig',par) == 1:
+                                
+                        # satisfying two year rule
+                        if transitions.age(t+1,par) >= 62:
+                            ret_age[work[ret_choice]] = 0
+                                    
+                        # not satisfying two year rule
+                        elif transitions.age(t+1,par) <= 61:
+                            ret_age[work[ret_choice]] = 1
 
-            # c. retired
-            else:            
+                    else:
+                        ret_age[work[ret_choice]] = 2 # no erp
 
-                # update m and c
-                m[t,i] = par.R*a[t-1,i] + transitions.pension(t,st_i,a[t-1,i],ret_age[i],par) # pass a as array, since otherwise pension does not work
-                c[t,i] = linear_interp.interp_1d(m_sol[:,0],c_sol[:,0],m[t,i])
-                
-                # update retirement choice and probability
-                if (t < par.simT-1): # if not last period
-                    d[t+1,i] = 0 # still retired                
-                    probs[t+1,i] = 0 # set retirement probability to 0 if already retired                        
+                # f. update a
+                a[t,work] = m[t,work] - c[t,work]
 
-            # d. update end of period wealth
-            a[t,i] = m[t,i]-c[t,i]
+            # 5. retired
+            if ret.size > 0:    # only if some actually is retired
 
-            # e. accuracy
-            if (accuracy_test and t < par.simT-1): # not last period
-                if (tol < c[t,i] < m[t,i] - tol): # inner solution
-                    euler_error(t,i,st_i,pi,ret_age,c,a,d,c_sol,m_sol,v_sol,par,euler) # calculate euler errors
+                # a. optimal consumption choice
+                prep = linear_interp.interp_1d_prep(len(ret))
+                c_interp = np.nan*np.zeros((len(ret),1))        # initialize
+                idx = np.argsort(m[t,ret])                      # indices to sort back later
+                m_sort = np.sort(m[t,ret])                      # sort m so interp is faster
+                linear_interp.interp_1d_vec_mon(prep,m_sol[t,st,:,0],c_sol[t,st,:,0],m_sort,c_interp[:,0])
+                c[t,ret] = c_interp[np.argsort(idx),0]          # sort back
+
+                # b. update retirement choice and probability
+                if  t < par.simT-1:     # if not last period
+                    d[t+1,ret] = 0      # still retired
+                    probs[t+1,ret] = 0  # set retirement prob to 0 if already retired
+
+                # c. update a
+                a[t,ret] = m[t,ret] - c[t,ret]   
 
 
-@njit(parallel=True)
-def euler_error(t,i,st_i,pi,ret_age,c,a,d,c_sol,m_sol,v_sol,par,euler):
-    """ Calculate euler errors 
+
+def euler_error(sim,sol,par):
+    """ calculate euler errors
     
         Args:
-            
-            t=time, i=individual, st_i=specific state,
-            pi=survival probs, ret_age=retirement age
-            c=consumption, a=assets, d=retirement choice,
-            c_sol,m_sol,v_sol=solution,
-            par=parameters,
-            euler=to store euler errors"""
-
-    # a. finding rhs
-    Ra = par.R*a[t,i]
-    if d[t+1,i] == 0: # retired
         
-        m_plus = Ra + transitions.pension(t+1,st_i,a[t,i],ret_age[i],par)
-        c_plus = linear_interp.interp_1d(m_sol[:,0],c_sol[:,0],m_plus)
-        marg_u_plus = utility.marg_func(c_plus,par)
-        rhs = par.beta*(par.R*pi*marg_u_plus + (1-pi)*par.gamma) 
+            sim=simulation, sol=solution, par=parameters"""    
 
-    else: # working 
+    # unpack (to help numba optimize)
+    # solution
+    c_sol = sol.c[:,:,par.age_dif[0],:,:]
+    m_sol = sol.m[:,:,par.age_dif[0],:,:]
+    v_sol = sol.v[:,:,par.age_dif[0],:,:]        
 
-        # 1. prepare for GH-integration  
-        if transitions.state_translate(st_i,'male',par) == 1:
-            w = par.xi_men_w
-            xi = par.xi_men
-        else:
-            w = par.xi_women_w
-            xi = par.xi_women  
+    # simulation
+    c = sim.c
+    m = sim.m
+    a = sim.a
+    d = sim.d
 
-        # 2. GH integration
-        c_plus = np.zeros((1,2))
-        v_plus = np.zeros((1,2))                        
-        avg_marg_u_plus = post_decision.shocks_GH(t,st_i,Ra,w,xi,c_sol,m_sol,v_sol,c_plus,v_plus,par)[1]
-                      
-        # 3. store rhs
-        rhs = par.beta*(par.R*pi*avg_marg_u_plus + (1-pi)*par.gamma)
+    # dummies and probabilities
+    alive = sim.alive
+    ret_age = sim.ret_age                          
 
-    # b. lhs and euler
-    lhs = utility.marg_func(c[t,i],par)
-    euler[t,i] = lhs - rhs                
+    # states
+    states = sim.states
+    num_st = np.unique(states)
+
+    # misc
+    euler = sim.euler
+    tol = par.tol
+
+
+    for t in range(par.simT-2): # cannot calculate for last period
+        for st in num_st:
+
+            pi = transitions.survival_look_up(t,st,par)        
+
+            # 1. create masks
+            mask_st = np.nonzero(states==st)[0]                                 # mask for state
+            work = mask_st[(d[t+1,mask_st]==1) & (alive[t,mask_st]==1)]         # working next period and alive
+            ret = mask_st[(d[t+1,mask_st]==0) & (alive[t,mask_st]==1)]          # retired  next period and alive                        
+            work_in = work[(tol < c[t,work]) & (c[t,work] < m[t,work] - tol)]   # inner solution for work
+            ret_in = ret[(tol < c[t,ret]) & (c[t,ret] < m[t,ret] - tol)]        # inner solution for retired
+
+            # 2. lhs
+            euler[t,work_in] = utility.marg_func(c[t,work_in],par)
+            euler[t,ret_in] = utility.marg_func(c[t,ret_in],par)
+
+            # 3. rhs
+            if ret_in.size > 0:
+
+                # a. retired
+                for ra in np.unique(ret_age[ret_in]):   # loop over retirement age (erp status)
+                    
+                    # next period resources
+                    mask_ra = (ret_age[ret_in] == ra) 
+                    m_plus = par.R*a[t,ret_in[mask_ra]] + transitions.pension(t+1,st,a[t,ret_in[mask_ra]],ra,par)
+                    
+                    # interpolation and post-decision
+                    c_plus = np.nan*np.zeros((len(ret_in[mask_ra]),1))
+                    linear_interp.interp_1d_vec(m_sol[t+1,st,:,0],c_sol[t+1,st,:,0],m_plus,c_plus[:,0])
+                    avg_marg_u_plus = utility.marg_func(c_plus[:,0],par)
+                    rhs = par.beta*(par.R*pi*avg_marg_u_plus + (1-pi)*par.gamma)
+
+                    # subtract rhs from lhs
+                    euler[t,ret_in[mask_ra]] = euler[t,ret_in[mask_ra]] - rhs
+
+            if work_in.size > 0:
+
+                # b. working
+                if transitions.state_translate(st,'male',par) == 1:
+                    w = par.xi_men_w
+                    xi = par.xi_men
+                else:
+                    w = par.xi_women_w
+                    xi = par.xi_women  
+
+                # prep 
+                c_plus = np.nan*np.zeros((len(work_in),2))
+                v_plus = np.nan*np.zeros((len(work_in),2))  
+                Ra = par.R*a[t,work_in]
+                
+                # sort
+                idx = np.argsort(Ra)    # indices to sort back later
+                Ra_sort = np.sort(Ra)   # sort m so interp is faster
+                
+                # integration and rhs
+                avg_marg_u_plus = post_decision.shocks_GH(t,st,Ra_sort,w,xi,c_sol[t+1,st],m_sol[t+1,st],v_sol[t+1,st],c_plus,v_plus,par)[1]
+                rhs = par.beta*(par.R*pi*avg_marg_u_plus[np.argsort(idx)] + (1-pi)*par.gamma)   # sort back
+
+                # subtract rhs from lhs
+                euler[t,work_in] = euler[t,work_in] - rhs
