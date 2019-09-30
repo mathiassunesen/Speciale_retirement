@@ -10,3 +10,6 @@ Nettoformue (til initialisering)
 Variabler (initial estimation, regressioner):
 Indkomst
 Privat pension (brug Thomas estimater)
+
+
+Overleaf dokument: https://www.overleaf.com/1322953718gnfxfvttpvbd
