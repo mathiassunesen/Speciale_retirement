@@ -90,11 +90,7 @@ def lifecycle(sim,sol,par):
                         index = np.argsort(m[t,work]) # indices to sort back later
                         m_sort = np.sort(m[t,work]) # sort m so interp is faster
                         for idx in range(2):
-                            # if idx == 0:      # dette giver gode forbrugsfunktioner men dårlige ssh
-                            #     ra_look = transitions.ra_look_up(t,st,ra,idx,par)
-                            # elif idx == 1:
-                            #     ra_look = transitions.ra_look_up(t,st,ra,idx,par)
-                            ra_look = transitions.ra_look_up(t,st,ra,1,par) # dette giver dårlige forbrugsfunktioner men dårlige ssh
+                            ra_look = transitions.ra_look_up(t,st,ra,1,par)
                             linear_interp.interp_1d_vec_mon(prep,m_sol[t,ma,st,ra_look,idx,:],c_sol[t,ma,st,ra_look,idx,:],m_sort,c_interp[idx,:])
                             linear_interp.interp_1d_vec_mon_rep(prep,m_sol[t,ma,st,ra_look,idx,:],v_sol[t,ma,st,ra_look,idx,:],m_sort,v_interp[idx,:])
 
