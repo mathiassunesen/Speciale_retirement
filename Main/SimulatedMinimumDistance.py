@@ -16,7 +16,7 @@ class SimulatedMinimumDistance():
     
     '''    
 
-    def __init__(self,model,mom_data,mom_fun,name='baseline',method='nelder-mead',est_par=[],lb=[],ub=[],options={'disp': False},print_iter=False,**kwargs): # called when created
+    def __init__(self,model,mom_data,mom_fun,name='baseline',method='nelder-mead',est_par=[],est_par_save={},lb=int,ub=int,guess=[],options={'disp': False},print_iter=False,save=False,**kwargs): # called when created
         
         self.model = model
         self.mom_data = mom_data
@@ -31,8 +31,9 @@ class SimulatedMinimumDistance():
         self.lb = lb
         self.ub = ub
 
+        self.save = save #se efter save og est_par_save - når dette skal ligges over i main.
         self.est_par = est_par
-
+        self.est_par_save = est_par_save
 
     def obj_fun(self,theta,W,*args):
         
@@ -57,6 +58,11 @@ class SimulatedMinimumDistance():
 
         if self.print_iter:
             print(f' -> {self.obj:2.4f}')
+        
+        if self.save:
+            for p in range(len(theta)):
+                self.est_par_save[self.est_par[p]].append(theta[p])
+            self.est_par_save['obj_func'].append(self.obj)
 
         return self.obj 
 
@@ -70,6 +76,38 @@ class SimulatedMinimumDistance():
         # return output
         self.est = self.est_out.x
         self.W = W
+
+         
+    def multistart_estimate(self,guess,W,*args):
+        # TODO: consider multistart-loop with several algortihms - that could alternatively be hard-coded outside
+        
+  
+        assert(len(W[0])==len(self.mom_data)) # check dimensions of W and mom_data
+        
+        for i in guess:
+            # estimate
+            self.est_out = minimize(self.obj_fun, i, (W, *args), method=self.method,options=self.options)
+
+        # return output
+        self.est = self.est_out.x
+        self.W = W
+    
+    def multistart_V(self, ng, guess):
+        # ng = number of guess - number of starting points
+        # guess: list of variables and the lower and upper bound of starting points.
+    
+        #Laver en dict med start værdier for hver parameter vi vil estimer:
+        q = {'{}'.format(i):[] for i in self.est_par}
+        for key in guess:
+            for i in range(ng):
+                q[key].append(np.random.uniform(guess[key][0],guess[key][1]))
+    
+        #Laver en liste med hvert gæt - dvs en startværdi for hver parameter - denne bruges som insdput i estimate.
+        start_values = [[] for i in range(ng)]
+        for i in range(ng):
+            for key in q:
+                start_values[i].append(q[key][i])
+        return start_values
 
     def std_error(self,theta,W,Omega,Nobs,Nsim,step=1.0e-4,*args):
         ''' Calculate standard errors and sensitivity measures '''
@@ -180,50 +218,3 @@ class SimulatedMinimumDistance():
             
             self.sens2e = ela
 
-
-
-
-
-# # moment function
-# from numba import njit
-
-# @njit
-# def mom_fun(data):
-#     low_noChild = np.mean(data.probs[:20, (data.states == 0) | (data.states == 4)], axis=1)*100
-#     low_Child = np.mean(data.probs[:20, (data.states == 1) | (data.states == 5)], axis=1)*100
-#     high_noChild = np.mean(data.probs[:20, (data.states == 2) | (data.states == 6)], axis=1)*100
-#     high_Child = np.mean(data.probs[:20, (data.states == 3) | (data.states == 7)], axis=1)*100
-#     return np.hstack((low_noChild, low_Child, high_noChild, high_Child))
-        
-# # create data
-# import itertools
-# from Model import RetirementModelClass
-# states = list(itertools.product([0,1],repeat=4))
-# states = states[:8]
-# model = RetirementModelClass(states=states, a_max = 10, simN = 5000)
-# model.solve()
-
-# # Allocate states
-# #model.par.simStates = funs.create_states(model,'female',0.5,0.5,0.5)
-# ind = int(model.par.simN/8)
-# states = np.hstack((0*np.ones(ind), 1*np.ones(ind), 2*np.ones(ind), 3*np.ones(ind), 
-#                     4*np.ones(ind), 5*np.ones(ind), 6*np.ones(ind), 7*np.ones(ind)))
-# states = np.array(states, dtype=int)
-# model.par.simStates = states
-# model.simulate()
-# mom_data = mom_fun(model.sim)
-
-# # prep
-# weight = np.eye(len(mom_data))
-# true = [model.par.alpha_0_female, model.par.alpha_1, model.par.alpha_2]
-# theta0 = [i*3 for i in true]
-# add_str = '_est'
-# est_par = ("alpha_0_female", "alpha_1", "alpha_2") # remember to be list if only 1 var
-
-# # Estimate the baseline model
-# model_base = model
-# model_base.prep = False
-
-# smd_base = SimulatedMinimumDistance(model_base,mom_data,mom_fun,print_iter=True,options={'disp':True,'maxiter':10})
-# smd_base.est_par = est_par
-# smd_base.estimate(theta0,weight)

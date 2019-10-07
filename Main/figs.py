@@ -4,6 +4,7 @@ import warnings
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_style("whitegrid")
+from mpl_toolkits.mplot3d.axes3d import Axes3D
 
 # consav
 from consav import linear_interp
@@ -365,3 +366,82 @@ def retirement_probs(model,ax,ma=0,ST=[0,1,2,3],ages=[57,68],plot=True):
         
 
     
+def plot_3D(dict,x_ax,y_ax,z_ax):
+    
+       
+    xgrid = np.array(dict[x_ax])
+    zgrid = np.array(dict[z_ax])
+    ygrid = np.array(dict[y_ax])
+    x, z = np.meshgrid(xgrid, zgrid)
+    y, x = np.meshgrid(ygrid, xgrid)
+    
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(x,
+                    y,
+                    z,
+                    rstride=2, cstride=2,
+                    cmap=cm.jet,
+                    alpha=0.7,
+                    linewidth=0.25)
+    ax.set_xlabel(x_ax)
+    ax.set_ylabel(y_ax)
+    ax.set_zlabel(z_ax)
+    ax.set_ylim([0,100])
+    plt.show()    
+
+def plot_3DD(dict,x_ax,y_ax,z_ax):
+    #Sort data:
+    x = dict[x_ax]
+    y = dict[y_ax]
+    z = dict[z_ax]
+
+    idx = np.argsort(x)
+    x_sort = []
+    y_sort = []
+    z_sort = []
+    for i in idx:
+        x_sort.append(x[i])
+        y_sort.append(y[i])
+        z_sort.append(z[i])
+    #Plot data
+    xgrid = np.array(x_sort)
+    zgrid = np.array(z_sort)
+    ygrid = np.array(y_sort)
+    x, z = np.meshgrid(xgrid, zgrid)
+    y, x = np.meshgrid(ygrid, xgrid)
+    
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(x,
+                    y,
+                    z,
+                    rstride=2, cstride=2,
+                    cmap=cm.jet,
+                    alpha=0.7,
+                    linewidth=0.25)
+    ax.set_xlabel(x_ax)
+    ax.set_ylabel(y_ax)
+    ax.set_zlabel(z_ax)
+    plt.show()   
+
+def plot_2DD(dict,x_ax,y_ax,xlim,ylim):
+    #Sort data
+    x = dict[x_ax]
+    y = dict[y_ax]
+    idx = np.argsort(x)
+
+    x_sort = []
+    y_sort = []
+    for i in idx:
+        x_sort.append(x[i])
+        y_sort.append(y[i])
+    
+    #Plot data:
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111)
+    plt.plot(x_sort,y_sort)
+    # c. details
+    ax.set_ylim([ylim[0],ylim[1]])
+    ax.set_xlim([xlim[0],xlim[1]])
+    ax.set(xlabel=x_ax, ylabel=y_ax)
