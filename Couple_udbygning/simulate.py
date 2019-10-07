@@ -193,7 +193,7 @@ def euler_error(work,ret,t,ma,st,ra,m,c,a,m_sol,c_sol,v_sol,par,sim):
     v_sol = v_sol[t+1,ma,st]
     tol = par.tol
     euler = sim.euler
-    pi_plus = transitions.survival_look_up(t+1,ma,par)    
+    pi = transitions.survival_look_up(t+1,ma,par)    
 
     # 1. mask
     work_in = work[(tol < c[t,work]) & (c[t,work] < m[t,work] - tol)]   # inner solution for work
@@ -216,7 +216,7 @@ def euler_error(work,ret,t,ma,st,ra,m,c,a,m_sol,c_sol,v_sol,par,sim):
         
         # c. post-decision (rhs)
         avg_marg_u_plus = utility.marg_func(c_plus[0],par)
-        rhs = par.beta*(par.R*pi_plus*avg_marg_u_plus + (1-pi_plus)*par.gamma)
+        rhs = par.beta*(par.R*pi*avg_marg_u_plus + (1-pi)*par.gamma)
 
         # d. subtract rhs from lhs
         euler[t,ret_in] = euler[t,ret_in] - rhs
@@ -243,141 +243,7 @@ def euler_error(work,ret,t,ma,st,ra,m,c,a,m_sol,c_sol,v_sol,par,sim):
                     
         # d. integration and rhs
         avg_marg_u_plus = post_decision.shocks_GH(t,Ra_sort,inc,w,c_sol[ra_plus],m_sol[ra_plus],v_sol[ra_plus],c_plus,v_plus,par,d_plus)[1]
-        rhs = par.beta*(par.R*pi_plus*avg_marg_u_plus[idx] + (1-pi_plus)*par.gamma)   # sort back using idx
+        rhs = par.beta*(par.R*pi*avg_marg_u_plus[idx] + (1-pi)*par.gamma)   # sort back using idx
 
         # e. subtract rhs from lhs
         euler[t,work_in] = euler[t,work_in] - rhs
-
-
-
-def lifecycle_c(sim,sol,par,euler=False):
-    """ Simulate full life-cycle
-        
-        Args:
-
-            sim=simulation, sol=solution, par=parameters"""         
-
-    # unpack (to help numba optimize)
-    # solution
-    c_sol = sol.c
-    m_sol = sol.m
-    v_sol = sol.v        
-
-    # simulation
-    c = sim.c
-    m = sim.m
-    a = sim.a
-    d = sim.d
-
-    # dummies and probabilities
-    alive = sim.alive
-    probs = sim.probs
-    RA = sim.RA                          
-
-    # states
-    MA = sim.MA
-    NMA = np.unique(MA)
-    ST = sim.ST
-    NST = np.unique(ST)
-
-    # random shocks
-    choiceP = sim.choiceP
-    deadP = sim.deadP
-    inc_shock = sim.inc_shock
-
-    # retirement ages
-    two_year = transitions.inv_age(par.two_year,par)
-    erp_age = transitions.inv_age(par.erp_age,par)        
-
-    # simulation
-    # loop over time
-    for t in range(par.simT):
-        if t > 0:
-            alive[t,alive[t-1] == 0] = 0    # still dead
-
-        # loop over gender
-        for ma in NMA:        
-            mask_ma = np.nonzero(MA==ma)[0]
-            pi = transitions.survival_look_up(t,ma,par)
-            alive[t,mask_ma[pi < deadP[t,mask_ma]]] = 0    # dead
-
-            # loop over states
-            for st in NST:     
-                elig = transitions.state_translate(st,'elig',par)
-                mask_st = mask_ma[ST[mask_ma]==st]
-
-                # loop over retirement status
-                for ra in [0,1,2]:
-                    mask = mask_st[RA[mask_st]==ra]                     # mask for ma, st and ra
-                    work = mask[(d[t,mask]==1) & (alive[t,mask]==1)]    # working and alive
-                    ret = mask[(d[t,mask]==0) & (alive[t,mask]==1)]     # retired and alive            
-
-                    # 1. update m
-                    if t > 0:               # m is initialized in 1. period
-                        if t < par.Tr-1:    # if not forced retire
-                            pre = transitions.labor_pretax(t,ma,st,par)
-                            m[t,work] = (par.R*a[t-1,work] + transitions.labor_posttax(t,pre,0,par,inc_shock[t,ma,work]))
-                        m[t,ret] = par.R*a[t-1,ret] + transitions.pension(t,ma,st,ra,a[t-1,ret],par)
-
-                    # 2. working
-                    if work.size > 0:
-
-                        # a. optimal consumption and value
-                        c_interp,v_interp = ConsValue(1,np.array([0,1]),work,t,st,ra,m[t],
-                                                      m_sol[t,ma,st],c_sol[t,ma,st],v_sol[t,ma,st],par)
-
-                        # b. retirement prob and optimal choice
-                        prob = funs.logsum2(v_interp,par)[1][0] # probs are in 1 and retirement probs are in 0 
-                        work_choice = prob < choiceP[t,work]    
-                        ret_choice = prob > choiceP[t,work]
-
-                        # c. update consumption (today)
-                        c[t,work[work_choice]] = c_interp[1,work_choice]
-                        c[t,work[ret_choice]] = c_interp[0,ret_choice]
-
-                        # d. update retirement choice (tomorrow)
-                        if t < par.simT-1:
-
-                            # save retirement prob
-                            probs[t+1,work] = prob
-
-                            # update retirement choice
-                            d[t+1,work[ret_choice]] = 0
-                            if t+1 >= par.Tr: # forced to retire
-                                d[t+1,work[work_choice]] = 0
-                            else:
-                                d[t+1,work[work_choice]] = 1
-
-                        # e. update retirement status (everyone are initialized at ra=2)
-                        if elig == 1:   # only update if eligible to ERP
-            
-                            # satisfying two year rule
-                            if t+1 >= two_year:
-                                RA[work] = 0
-                                            
-                            # not satisfying two year rule
-                            elif t+1 >= erp_age:
-                                RA[work] = 1
-
-                        # f. update a
-                        a[t,work] = m[t,work] - c[t,work]
-
-                    # 3. retired
-                    if ret.size > 0:
-
-                        # a. optimal consumption
-                        c_interp = ConsValue(0,np.array([0]),ret,t,st,ra,m[t],
-                                             m_sol[t,ma,st],c_sol[t,ma,st],v_sol[t,ma,st],par)[0]                        
-                        c[t,ret] = c_interp[0]
-
-                        # b. update retirement choice and probability
-                        if t < par.simT-1:      # if not last period
-                            d[t+1,ret] = 0      # still retired
-                            probs[t+1,ret] = 0  # set retirement prob to 0 if already retired
-
-                        # c. update a
-                        a[t,ret] = m[t,ret] - c[t,ret]   
-
-                    # 4. euler erros
-                    if euler and t < par.simT-1:
-                        euler_error(work,ret,t,ma,st,ra,m,c,a,m_sol,c_sol,v_sol,par,sim)

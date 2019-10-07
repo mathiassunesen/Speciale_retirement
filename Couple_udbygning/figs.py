@@ -12,7 +12,7 @@ from consav import linear_interp
 import transitions
 import funs
 
-def policy(model,ax,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0):
+def policy(model,ax,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None):
     """ plot either consumption or value functions for the single model
     
     Args:
@@ -37,7 +37,6 @@ def policy(model,ax,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0):
     solvardict = dict([('c','C_t'),
                        ('v','v_t')])    
     m = sol.m
-    top = len(par.grid_a)
     
     # loop through options
     ad = 0
@@ -49,8 +48,8 @@ def policy(model,ax,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0):
 
                         if d == 1:
                             ra = transitions.ra_look_up(t,st,ra,d,par)
-                        x = m[t,ad,ma,st,ra,d,bottom:top]
-                        y = getattr(sol,var)[t,ad,ma,st,ra,d,bottom:top]
+                        x = m[t,ad,ma,st,ra,d]
+                        y = getattr(sol,var)[t,ad,ma,st,ra,d]
                             
                         if label == False:
                             ax.plot(x,y)
@@ -147,14 +146,13 @@ def policy_c(model,ax,var,T,AD,ST_h,ST_w,RA_h,RA_w,D_h,D_w,label=False,xlim=None
     ax.set_xlabel('$m_t$')
     ax.set_ylabel('${}$'.format(solvardict[var]))
 
-def choice_probs(model,ax,AD,MA,ST,ages=[57,68],xlim=None,ylim=None):
+def choice_probs(model,ax,MA,ST,ages=[57,68],xlim=None,ylim=None):
     """ plot the average choice probabilities for multiple states
     
     Args:
         model (class): parameters, solution and simulation
         ax (axes): axes object for plotting
         ages (list): list with start age and end age        
-        AD (int): age difference
         MA (int): male indicator
         ST (list): list of states
         xlim (list, optional): set x axis
@@ -180,7 +178,7 @@ def choice_probs(model,ax,AD,MA,ST,ages=[57,68],xlim=None,ylim=None):
                     
             # average choice probabilities
             ra = transitions.ra_look_up(t,st,0,1,par)
-            probs[st,t] = np.mean(funs.logsum2(v[t,AD,MA,st,ra],par)[1], axis=1)[0]
+            probs[st,t] = np.mean(funs.logsum2(v[t,0,MA,st,ra],par)[1], axis=1)[0]
 
         # plot
         if transitions.state_translate(st,'elig',par)==1:

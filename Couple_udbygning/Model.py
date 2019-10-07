@@ -218,6 +218,7 @@ class RetirementClass(ModelClass):
             transitions.pension_precompute(self.par)            
 
         # prep
+        T = self.par.T
         NAD = len(self.par.AD)          # number of age differences             
         NST = len(self.par.ST)          # number of states
         Na = self.par.Na                # number of points in grid           
@@ -231,21 +232,26 @@ class RetirementClass(ModelClass):
             
         # solution
         if self.couple:
-            self.sol.c = np.nan*np.zeros((self.par.T,NAD,NST,NST,NRA,NRA,ND,Na))   
-            self.sol.m = np.nan*np.zeros((self.par.T,NAD,NST,NST,NRA,NRA,ND,Na))
-            self.sol.v = np.nan*np.zeros((self.par.T,NAD,NST,NST,NRA,NRA,ND,Na))   
+            self.sol.c = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))   
+            self.sol.m = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))
+            self.sol.v = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))   
         else:
-            self.sol.c = np.nan*np.zeros((self.par.T,NAD,NMA,NST,NRA,ND,Na))   
-            self.sol.m = np.nan*np.zeros((self.par.T,NAD,NMA,NST,NRA,ND,Na))
-            self.sol.v = np.nan*np.zeros((self.par.T,NAD,NMA,NST,NRA,ND,Na))            
+            self.sol.c = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))   
+            self.sol.m = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))
+            self.sol.v = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))         
+            self.sol.m_raw = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))               
 
         # interpolation
         self.sol.c_plus_interp = np.nan*np.zeros((ND,Na))
         self.sol.v_plus_interp = np.nan*np.zeros((ND,Na)) 
 
         # post decision
-        self.sol.q = np.nan*np.zeros((ND,Na))
-        self.sol.v_plus_raw = np.nan*np.zeros((ND,Na))
+        if self.couple:
+            self.sol.avg_marg_u_plus = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))
+            self.sol.v_plus_raw = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))
+        else:
+            self.sol.avg_marg_u_plus = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))
+            self.sol.v_plus_raw = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))
 
     def solve(self,recompute=False):
         """ solve the model """
@@ -316,4 +322,4 @@ class RetirementClass(ModelClass):
 
 # data = RetirementClass()
 # data.solve()
-# data.simulate(euler=True)
+# data.simulate()

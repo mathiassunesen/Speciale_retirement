@@ -34,16 +34,15 @@ def compute(t,ad,ma,st,ra,D,sol,par):
     """        
 
     # unpack solution
-    c = sol.c[t+1,ad,ma,st]
-    m = sol.m[t+1,ad,ma,st]
-    v = sol.v[t+1,ad,ma,st]
+    c_plus = sol.c[t+1,ad,ma,st]
+    m_plus = sol.m[t+1,ad,ma,st]
+    v_plus = sol.v[t+1,ad,ma,st]
 
     # unpack rest
     c_plus_interp = sol.c_plus_interp[:,:]
     v_plus_interp = sol.v_plus_interp[:,:]  
-    q = sol.q[:,:]
-    v_plus_raw = sol.v_plus_raw[:,:]
-    pi = transitions.survival_look_up(t+1,ma,par)
+    avg_marg_u_plus = sol.avg_marg_u_plus[t+1,ad,ma,st,ra]
+    v_plus_raw = sol.v_plus_raw[t+1,ad,ma,st,ra]
        
     # loop over the choices
     for d in D:
@@ -56,8 +55,8 @@ def compute(t,ad,ma,st,ra,D,sol,par):
         if d == 0:
             # next period income
             inc_no_shock = Ra + transitions.pension_look_up(t+1,ma,st,ra,par)
-            w = np.array([1.0]) # no integration
-            inc = 0*w[:]               
+            w = np.array([0.0]) # no integration
+            inc = w[:]               
 
             # next period choice set and retirement age 
             d_plus = transitions.d_plus(t,d,par)
@@ -79,34 +78,35 @@ def compute(t,ad,ma,st,ra,D,sol,par):
             elif ma == 0:
                 w = par.xi_women_w                                             
 
-        # c. integration            
-        vp_raw,avg_marg_u_plus = shocks_GH(t,inc_no_shock,inc,w,c[ra_plus],m[ra_plus],v[ra_plus],
-                                           c_plus_interp,v_plus_interp,par,d_plus)
+        # c. integration and store results         
+        v_plus_raw[d],avg_marg_u_plus[d] = shocks_GH(t,inc_no_shock,inc,w,c_plus[ra_plus],m_plus[ra_plus],v_plus[ra_plus],
+                                                     c_plus_interp,v_plus_interp,par,d_plus)
 
-        # d. store results
-        v_plus_raw[d,:] = vp_raw[:]
-        q[d,:] = par.beta*(par.R*pi*avg_marg_u_plus[:] + (1-pi)*par.gamma)   
+        # # d. store results
+        # v_plus_raw[d,:] = vp_raw[:]
+        # q[d,:] = par.beta*(par.R*pi*avg_marg_u_plus[:] + (1-pi)*par.gamma)   
 
 
 ###############################
 ### Functions for couples #####
 ###############################
 @njit(parallel=True)
-def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par):
+def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par,single_sol):
     """ compute post decision for couples""" 
 
     # unpack solution
-    ad_idx = ad+par.ad_min
-    c = sol.c[t+1,ad_idx,st_h,st_w]
-    m = sol.m[t+1,ad_idx,st_h,st_w]
-    v = sol.v[t+1,ad_idx,st_h,st_w]  
+    ad_min = par.ad_min
+    ad_idx = ad+ad_min
+    c_plus = sol.c[t+1,ad_idx,st_h,st_w]
+    m_plus = sol.m[t+1,ad_idx,st_h,st_w]
+    v_plus = sol.v[t+1,ad_idx,st_h,st_w]  
 
     # unpack rest
     c_plus_interp = sol.c_plus_interp[:,:]
     v_plus_interp = sol.v_plus_interp[:,:]  
-    q = sol.q[:,:]
-    v_plus_raw = sol.v_plus_raw[:,:]
-    pi_h,pi_w = transitions.survival_look_up_c(t+1,ad,par)         
+    avg_marg_u_plus = sol.avg_marg_u_plus[t+1,ad_idx,st_h,st_w,ra_h,ra_w]
+    v_plus_raw = sol.v_plus_raw[t+1,ad_idx,st_h,st_w,ra_h,ra_w]    
+    pi_h,pi_w = transitions.survival_look_up_c(t+1,ad,par)  # it is pi_plus, but we save the plus
        
     # prep
     a = par.grid_a
@@ -168,16 +168,46 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par):
                 inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,st_h,st_w,par) # joint labor income
                 w = par.w_corr             
 
-            # e. interpolate/integrate   
-            vp_raw,avg_marg_u_plus = shocks_GH(t,inc_no_shock,inc,w,c[ra_pH,ra_pW],m[ra_pH,ra_pW],v[ra_pH,ra_pW],
-                                               c_plus_interp,v_plus_interp,par,d_plus)
-    
-            # f. store results    
-            d = transitions.d_c(d_h,d_w)    # joint index  
-            v_plus_raw[d,:] = vp_raw[:]
-            #q[d,:] = par.beta*(par.R*(pi_h*pi_w*avg_marg_u_plus[:]) + (1-pi_h)*(1-pi_w)*par.gamma)
-            dead = (1-pi_h)*(1-pi_w)
-            q[d,:] = par.beta*(par.R*(1-dead)*avg_marg_u_plus[:] + dead*par.gamma)
+            # e. integration  
+            v_plus_raw_joint,avg_marg_u_plus_joint = shocks_GH(t,inc_no_shock,inc,w,c_plus[ra_pH,ra_pW],m_plus[ra_pH,ra_pW],v_plus[ra_pH,ra_pW],
+                                                               c_plus_interp,v_plus_interp,par,d_plus)
+
+            # f. look up in single solution
+
+            # 1. indices
+            d = transitions.d_c(d_h,d_w)                    # joint index
+            d_plus_h = transitions.d_plus_int(t,d_h,par)    # choice tomorrow
+            d_plus_w = transitions.d_plus_int(t,d_w,par)    # choice tomorrow
+
+            # 2. look up, husband
+            m_raw_h = single_sol.m_raw[t+ad_min,0,1,st_h,ra_h,d_plus_h]                     # ad=0 and male=1
+            v_plus_raw_h = single_sol.v_plus_raw[t+ad_min,0,1,st_h,ra_h,d_plus_h]           # ad=0 and male=1
+            avg_marg_u_plus_h = single_sol.avg_marg_u_plus[t+ad_min,0,1,st_h,ra_h,d_plus_h] # ad=0 and male=1
+
+            # 3. look up, wife
+            m_raw_w = np.zeros(m_raw_h.shape)                       # initalize          
+            v_plus_raw_w = np.zeros(v_plus_raw_h.shape)             # initialize            
+            avg_marg_u_plus_w = np.zeros(avg_marg_u_plus_h.shape)   # initialize            
+            if t+ad < par.T:    # wife alive
+                m_raw_w[:] = single_sol.m_raw[t+ad_idx,0,0,st_w,ra_w,d_plus_w]                      # ad=0 and male=0
+                v_plus_raw_w[:] = single_sol.v[t+ad_idx,0,0,st_w,ra_w,d_plus_w]                     # ad=0 and male=0             
+                avg_marg_u_plus_w[:] = single_sol.avg_marg_u_plus[t+ad_idx,0,0,st_w,ra_w,d_plus_w]  # ad=0 and male=0
+
+            # 4. write to same grid
+            linear_interp.interp_1d_vec(m_raw_h,v_plus_raw_h,m_plus,c_plus_interp[d,:])
+            linear_interp.interp_1d_vec_mon_rep(prep,m[d,:],v[d,:],m_plus,v_plus_interp[d,:])              
+
+
+            # g. store results           
+            v_plus_raw[d] = par.beta*(pi_h*pi_w*v_plus_raw_joint +
+                                     (1-pi_w)*pi_h*v_plus_raw_h + 
+                                     (1-pi_h)*pi_w*v_plus_raw_w + 
+                                     (1-pi_h)*(1-pi_w)*par.gamma*a)
+            
+            avg_marg_u_plus[d] = par.beta*(par.R*(pi_h*pi_w*avg_marg_u_plus_joint +
+                                                 (1-pi_w)*pi_h*avg_marg_u_plus_h + 
+                                                 (1-pi_h)*pi_w*avg_marg_u_plus_h) + 
+                                                 (1-pi_w)*(1-pi_h)*par.gamma*a) 
 
 
 ###############################
@@ -220,8 +250,8 @@ def shocks_GH(t,inc_no_shock,inc,w,c,m,v,c_plus_interp,v_plus_interp,par,d_plus)
 
         # 2. logsum and v_plus_raw
         if len(d_plus) == 1:     # no taste shocks
-            v_plus_raw += w[i]*v_plus_interp[d_plus[0],:]
-            avg_marg_u_plus += w[i]*utility.marg_func(c_plus_interp[d_plus[0],:],par)
+            v_plus_raw = v_plus_interp[d_plus[0],:]
+            avg_marg_u_plus = utility.marg_func(c_plus_interp[d_plus[0],:],par)
 
         elif len(d_plus) == 2:   # taste shocks
             logsum,prob = funs.logsum2(v_plus_interp[d_plus,:],par)

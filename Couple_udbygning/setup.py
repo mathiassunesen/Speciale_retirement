@@ -106,17 +106,18 @@ def single_lists():
     sollist = [ # (name, numba type), solution data
 
             # solution
-            ('c',double[:,:,:,:,:,:,:]),    # 7d
+            ('c',double[:,:,:,:,:,:,:]),                # 7d
             ('m',double[:,:,:,:,:,:,:]),
             ('v',double[:,:,:,:,:,:,:]),                     
 
             # interpolation
-            ('c_plus_interp',double[:,:]),  # 2d
+            ('c_plus_interp',double[:,:]),              # 2d
             ('v_plus_interp',double[:,:]),
 
             # post decision
-            ('q',double[:,:]),              # 2d
-            ('v_plus_raw',double[:,:])                            
+            ('avg_marg_u_plus',double[:,:,:,:,:,:,:]),  # 7d
+            ('v_plus_raw',double[:,:,:,:,:,:,:]),
+            ('m_plus',double[:,:,:,:,:,:,:])                                   
         ]     
 
     simlist = [ # (name, numba type), simulation data       
@@ -189,17 +190,17 @@ def couple_lists():
     sollist = [ # (name, numba type), solution data
 
             # solution
-            ('c',double[:,:,:,:,:,:,:,:]),    # 8d
+            ('c',double[:,:,:,:,:,:,:,:]),                  # 8d
             ('m',double[:,:,:,:,:,:,:,:]),
             ('v',double[:,:,:,:,:,:,:,:]),                     
 
             # interpolation
-            ('c_plus_interp',double[:,:]),  # 2d
+            ('c_plus_interp',double[:,:]),                  # 2d
             ('v_plus_interp',double[:,:]),
 
             # post decision
-            ('q',double[:,:]),              # 2d
-            ('v_plus_raw',double[:,:])                            
+            ('avg_marg_u_plus',double[:,:,:,:,:,:,:,:]),    # 8d
+            ('v_plus_raw',double[:,:,:,:,:,:,:,:])                            
         ]              
 
     simlist = [ # (name,numba type), parameters, grids etc.
@@ -218,16 +219,17 @@ def init_sim(par,sim,dev=1.25,add=0.8):
 
         # initialize simulation
         np.random.seed(par.sim_seed)
-        #par.simM_init = np.random.lognormal(-0.5*(dev**2),dev,size=par.simN)+add
+        par.simM_init = np.random.lognormal(-0.5*(dev**2),dev,size=par.simN)+add
         # hardcoded to simN=100000
-        par.simM_init = np.array(np.array([10.0]*1095 +    # woman,erp=0,hs=0
-                                          [16.0]*405 +     # woman,erp=0,hs=1
-                                          [10.0]*35405 +   # woman,erp=1,hs=0
-                                          [16.0]*13095 +   # woman,erp=1,hs=1
-                                          [11.0]*2000 +    # man,erp=0,hs=0
-                                          [17.0]*500 +     # man,erp=0,hs=1
-                                          [11.0]*38000 +   # man,erp=1,hs=0
-                                          [17.0]*9500))    # man,erp=1,hs=1
+        #par.simM_init = np.array([2.0]*100000)
+        # par.simM_init = np.array(np.array([1.6]*1095 +    # woman,erp=0,hs=0
+        #                                   [2.2]*405 +     # woman,erp=0,hs=1
+        #                                   [1.6]*35405 +   # woman,erp=1,hs=0
+        #                                   [2.2]*13095 +   # woman,erp=1,hs=1
+        #                                   [1.9]*2000 +    # man,erp=0,hs=0
+        #                                   [2.6]*500 +     # man,erp=0,hs=1
+        #                                   [1.9]*38000 +   # man,erp=1,hs=0
+        #                                   [2.6]*9500))    # man,erp=1,hs=1
 
         # states
         if par.couple:
