@@ -162,23 +162,3 @@ def solve_c(model):
                                 ra_w = transitions.ra_look_up(t,st_w,0,1,par)
                                 D_w = np.array([0,1])
                                 egm.solve_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par,single_sol)                                                                  
-
-                    # # ii. if both are forced to retire (retirement decision is made one period ahead)
-                    # elif min(t+1,t+1+ad) >= par.Tr:   # ad can be both negative and positive
-                    #     D = np.array([0])     
-                    #     egm.solve_c(t,ad,st_h,st_w,ra_h,ra_w,D,sol,par,single_sol)                    
-
-                    # # iii. if husband is forced to retire, but not wife
-                    # elif t+1 >= par.Tr and t+1+ad < par.Tr:
-                    #     D = np.array([0,1])
-                    #     egm.solve_c(t,ad,st_h,st_w,ra_h,ra_w,D,sol,par,single_sol)
-
-                    # # iii. if wife is forced to retire, but not husband
-                    # elif t+1 < par.Tr and t+1+ad >= par.Tr:
-                    #     D = np.array([0,2])
-                    #     egm.solve_c(t,ad,st_h,st_w,ra_h,ra_w,D,sol,par,single_sol) 
-
-                    # # iv. if none are forced to retire
-                    # else:
-                    #     D = np.array([0,1,2,3])
-                    #     egm.solve_c(t,ad,st_h,st_w,ra_h,ra_w,D,sol,par,single_sol)                                          

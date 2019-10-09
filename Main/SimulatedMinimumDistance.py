@@ -16,7 +16,7 @@ class SimulatedMinimumDistance():
     
     '''    
 
-    def __init__(self,model,mom_data,mom_fun,name='baseline',method='nelder-mead',est_par=[],est_par_save={},lb=int,ub=int,guess=[],options={'disp': False},print_iter=False,save=False,**kwargs): # called when created
+    def __init__(self,model,mom_data,mom_fun,name='baseline',method='nelder-mead',est_par=[],est_par_save={},lb=int,ub=int,guess=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
         
         self.model = model
         self.mom_data = mom_data
@@ -34,12 +34,18 @@ class SimulatedMinimumDistance():
         self.save = save #se efter save og est_par_save - når dette skal ligges over i main.
         self.est_par = est_par
         self.est_par_save = est_par_save
+        self.iter = 0
+
 
     def obj_fun(self,theta,W,*args):
         
-        if self.print_iter:
-            for p in range(len(theta)):
-                print(f' {self.est_par[p]}={theta[p]:2.3f}', end='')
+        self.iter += 1
+
+        if self.print_iter[0]:
+            if self.iter % self.print_iter[1] == 0:
+                print('Iteration: ', self.iter)
+                for p in range(len(theta)):
+                    print(f' {self.est_par[p]}={theta[p]:2.3f}', end='')
 
         # 1. update parameters 
         for i in range(len(self.est_par)):
@@ -50,14 +56,15 @@ class SimulatedMinimumDistance():
 
         # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
         self.model.simulate()
-        self.mom_sim = self.mom_fun(self.model.sim,*args)
+        self.mom_sim = self.mom_fun(self.model,*args)
 
         # 4. calculate objective function and return it
         diff = self.mom_data - self.mom_sim
         self.obj  = (np.transpose(diff) @ W) @ diff
 
-        if self.print_iter:
-            print(f' -> {self.obj:2.4f}')
+        if self.print_iter[0]:
+            if self.iter % self.print_iter[1] == 0:
+                print(f' -> {self.obj:2.4f}')
         
         if self.save:
             for p in range(len(theta)):
@@ -75,7 +82,7 @@ class SimulatedMinimumDistance():
 
         # return output
         self.est = self.est_out.x
-        self.W = W
+        self.W = W     
 
          
     def multistart_estimate(self,guess,W,*args):

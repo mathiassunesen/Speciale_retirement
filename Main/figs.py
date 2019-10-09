@@ -272,7 +272,7 @@ def choice_probs_c(model,ax,ma,ST,ad=0,ages=[57,68],xlim=None,ylim=None):
     ax.set_ylabel('Retirement probability')
 
 
-def lifecycle(model,ax,vars=['m','c','a'],ma=0,ST=[0,1,2,3],ages=[57,68],quantiles=True):
+def lifecycle(model,ax,vars=['m','c','a'],ma=0,ST=[0,1,2,3],ages=[57,68],quantiles=False,dots=False):
     """ plot lifecycle
     
     Args:
@@ -293,8 +293,11 @@ def lifecycle(model,ax,vars=['m','c','a'],ma=0,ST=[0,1,2,3],ages=[57,68],quantil
     par = model.par
 
     # mask
-    mask = np.nonzero(np.isin(sim.ST,ST))[0]
-    mask = mask[sim.MA[mask]==ma]
+    states = sim.states
+    MA = states[:,0]
+    States = states[:,1]
+    mask = np.nonzero(np.isin(States,ST))[0]
+    mask = mask[MA[mask]==ma]
 
     # figure
     simvardict = dict([('m','$m_t$'),
@@ -309,7 +312,11 @@ def lifecycle(model,ax,vars=['m','c','a'],ma=0,ST=[0,1,2,3],ages=[57,68],quantil
         y = simdata[:,mask]
         with warnings.catch_warnings(): # ignore this specific warning
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            ax.plot(x,np.nanmean(y,axis=1),lw=2,label=simvardict[i])
+
+            if dots:
+                ax.plot(x,np.nanmean(y,axis=1),'ko',lw=2,label=simvardict[i] + ' (Data)')
+            else:
+                ax.plot(x,np.nanmean(y,axis=1), 'r',lw=2,label=simvardict[i] + ' (Predicted)')                
 
             if len(vars)==1 and quantiles:
                 ax.plot(x,np.nanpercentile(y,25,axis=1),'--',lw=1.5,label='lower quartile')
@@ -325,7 +332,7 @@ def lifecycle(model,ax,vars=['m','c','a'],ma=0,ST=[0,1,2,3],ages=[57,68],quantil
         ax.set_ylabel('100.000 DKR')
 
 
-def retirement_probs(model,ax,ma=0,ST=[0,1,2,3],ages=[57,68],plot=True):
+def retirement_probs(model,ax,ma=0,ST=[0,1,2,3],ages=[57,68],plot=True,dots=False):
     """ plot retirement probabilities
     
     Args:
@@ -344,8 +351,11 @@ def retirement_probs(model,ax,ma=0,ST=[0,1,2,3],ages=[57,68],plot=True):
     par = model.par
 
     # mask
-    mask = np.nonzero(np.isin(sim.ST,ST))[0]
-    mask = mask[sim.MA[mask]==ma]    
+    states = sim.states
+    MA = states[:,0]
+    States = states[:,1]
+    mask = np.nonzero(np.isin(States,ST))[0]
+    mask = mask[MA[mask]==ma]    
     
     # figure
     x = np.arange(ages[0], ages[1]+1)
@@ -353,7 +363,10 @@ def retirement_probs(model,ax,ma=0,ST=[0,1,2,3],ages=[57,68],plot=True):
     y = y[:,mask]                               # states
 
     if plot:
-        ax.plot(x,np.nanmean(y,axis=1),'r')
+        if dots:
+            ax.plot(x,np.nanmean(y,axis=1),'ko',label='Data')
+        else:
+            ax.plot(x,np.nanmean(y,axis=1),'r',label='Predicted')
         
         # details
         ax.grid(True)    

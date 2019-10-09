@@ -41,9 +41,8 @@ def compute(t,ad,ma,st,ra,D,sol,par):
     # unpack rest
     c_plus_interp = sol.c_plus_interp[:,:]
     v_plus_interp = sol.v_plus_interp[:,:]  
-    q = sol.q[:,:]
-    v_plus_raw = sol.v_plus_raw[:,:]
-    pi = transitions.survival_look_up(t+1,ma,par)
+    avg_marg_u_plus = sol.avg_marg_u_plus[t+1,ad,ma,st,ra]
+    v_plus_raw = sol.v_plus_raw[t+1,ad,ma,st,ra]
        
     # loop over the choices
     for d in D:
@@ -79,34 +78,40 @@ def compute(t,ad,ma,st,ra,D,sol,par):
             elif ma == 0:
                 w = par.xi_women_w                                             
 
-        # c. integration            
-        vp_raw,avg_marg_u_plus = shocks_GH(t,inc_no_shock,inc,w,c[ra_plus],m[ra_plus],v[ra_plus],
-                                           c_plus_interp,v_plus_interp,par,d_plus)
-
-        # d. store results
-        v_plus_raw[d,:] = vp_raw[:]
-        q[d,:] = par.beta*(par.R*pi*avg_marg_u_plus[:] + (1-pi)*par.gamma)   
+        # c. integration and store results            
+        v_plus_raw[d],avg_marg_u_plus[d] = shocks_GH(t,inc_no_shock,inc,w,c[ra_plus],m[ra_plus],v[ra_plus],
+                                                     c_plus_interp,v_plus_interp,par,d_plus)
 
 
 ###############################
 ### Functions for couples #####
 ###############################
 @njit(parallel=True)
-def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par):
+def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par,single_sol):
     """ compute post decision for couples""" 
 
     # unpack solution
-    ad_idx = ad+par.ad_min
+    ad_min = par.ad_min
+    ad_idx = ad+ad_min
     c = sol.c[t+1,ad_idx,st_h,st_w]
     m = sol.m[t+1,ad_idx,st_h,st_w]
     v = sol.v[t+1,ad_idx,st_h,st_w]  
+
+    # unpack single solution
+    v_plus_raw_h = single_sol.v_plus_raw[t+1+ad_min,0,1,st_h,ra_h]                  # ad=0 and male=1
+    avg_marg_u_plus_h = single_sol.avg_marg_u_plus[t+1+ad_min,0,1,st_h,ra_h]        # ad=0 and male=1   
+    v_plus_raw_w = np.zeros(v_plus_raw_h.shape)                                     # initialize            
+    avg_marg_u_plus_w = np.zeros(avg_marg_u_plus_h.shape)                           # initialize   
+    if t+1+ad < par.T:    # wife alive
+        v_plus_raw_w = single_sol.v_plus_raw[t+1+ad_idx,0,0,st_w,ra_w]              # ad=0 and male=1
+        avg_marg_u_plus_w = single_sol.avg_marg_u_plus[t+1+ad_idx,0,0,st_w,ra_w]    # ad=0 and male=1   
 
     # unpack rest
     c_plus_interp = sol.c_plus_interp[:,:]
     v_plus_interp = sol.v_plus_interp[:,:]  
     q = sol.q[:,:]
-    v_plus_raw = sol.v_plus_raw[:,:]
-    pi_h,pi_w = transitions.survival_look_up_c(t+1,ad,par)         
+    v_raw = sol.v_raw[:,:]
+    pi_plus_h,pi_plus_w = transitions.survival_look_up_c(t+1,ad,par)        
        
     # prep
     a = par.grid_a
@@ -120,22 +125,22 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par):
             if d_h == 0 and d_w == 0:
                 # choice set tomorrow and retirement age
                 d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_pH = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)           # husband            
-                ra_pW = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)        # wife
+                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)       # husband            
+                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)    # wife
 
                 # income
                 pens_h = transitions.pension_look_up_c(t+1,1,ad,st_h,ra_h,par)  # husband
                 pens_w = transitions.pension_look_up_c(t+1,0,ad,st_w,ra_w,par)  # wife
                 inc_no_shock = Ra[:] + pens_h[:] + pens_w[:]
-                w = np.array([0.0]) # no integration
-                inc = w[:]
+                w = np.array([1.0]) # no integration
+                inc = 0*w[:]
 
             # b. husband retire, wife working
             elif d_h == 0 and d_w == 1:                  
                 # choice set tomorrow and retirement age
                 d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_pH = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)           # husband            
-                ra_pW = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)        # wife            
+                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)       # husband            
+                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)    # wife            
 
                 # income
                 pens_h = transitions.pension_look_up_c(t+1,1,ad,st_h,ra_h,par)  # husband
@@ -147,8 +152,8 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par):
             elif d_h == 1 and d_w == 0:                   
                 # choice set tomorrow and retirement age
                 d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_pH = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)           # husband            
-                ra_pW = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)        # wife            
+                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)       # husband            
+                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)    # wife            
     
                 # income
                 pens_w = transitions.pension_look_up_c(t+1,0,ad,st_w,ra_w,par)  # wife
@@ -160,8 +165,8 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par):
             elif d_h == 1 and d_w == 1:                   
                 # choice set tomorrow and retirement age
                 d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_pH = transitions.ra_look_up(t+1,st_h,ra_h,1,par)             # husband            
-                ra_pW = transitions.ra_look_up(t+1+ad,st_w,ra_w,1,par)          # wife            
+                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,1,par)         # husband            
+                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,1,par)      # wife            
 
                 # income 
                 inc_no_shock = Ra[:]                                            # no pension
@@ -169,15 +174,32 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,sol,par):
                 w = par.w_corr             
 
             # e. interpolate/integrate   
-            vp_raw,avg_marg_u_plus = shocks_GH(t,inc_no_shock,inc,w,c[ra_pH,ra_pW],m[ra_pH,ra_pW],v[ra_pH,ra_pW],
-                                               c_plus_interp,v_plus_interp,par,d_plus)
+            v_plus_raw_c,avg_marg_u_plus_c = shocks_GH(t,inc_no_shock,inc,w,
+                                                       c[ra_plus_h,ra_plus_w],m[ra_plus_h,ra_plus_w],v[ra_plus_h,ra_plus_w],
+                                                       c_plus_interp,v_plus_interp,par,d_plus)
     
-            # f. store results    
-            d = transitions.d_c(d_h,d_w)    # joint index  
-            v_plus_raw[d,:] = vp_raw[:]
-            #q[d,:] = par.beta*(par.R*(pi_h*pi_w*avg_marg_u_plus[:]) + (1-pi_h)*(1-pi_w)*par.gamma)
-            dead = (1-pi_h)*(1-pi_w)
-            q[d,:] = par.beta*(par.R*(1-dead)*avg_marg_u_plus[:] + dead*par.gamma)
+            # f. indices to look up
+            d = transitions.d_c(d_h,d_w)                    # joint index     
+            d_plus_h = transitions.d_plus_int(t,d_h,par)    # single, husband
+            d_plus_w = transitions.d_plus_int(t,d_w,par)    # single, wife
+
+            # g. store results            
+            # pi_plus = pi_plus_h*pi_plus_w      
+            # v_raw[d] = par.beta*(pi_plus*v_plus_raw_c +
+            #                     (1-pi_plus)*par.gamma*a)
+            
+            # q[d] = par.beta*(par.R*(pi_plus*avg_marg_u_plus_c) + 
+            #                        (1-pi_plus)*par.gamma)   
+
+            v_raw[d] = par.beta*(pi_plus_h*pi_plus_w*v_plus_raw_c +
+                                (1-pi_plus_w)*pi_plus_h*v_plus_raw_h[d_plus_h] + 
+                                (1-pi_plus_h)*pi_plus_w*v_plus_raw_w[d_plus_w] + 
+                                (1-pi_plus_h)*(1-pi_plus_w)*par.gamma*a)
+            
+            q[d] = par.beta*(par.R*(pi_plus_h*pi_plus_w*avg_marg_u_plus_c +
+                                   (1-pi_plus_w)*pi_plus_h*avg_marg_u_plus_h[d_plus_h] + 
+                                   (1-pi_plus_h)*pi_plus_w*avg_marg_u_plus_w[d_plus_w]) + 
+                                   (1-pi_plus_w)*(1-pi_plus_h)*par.gamma)             
 
 
 ###############################

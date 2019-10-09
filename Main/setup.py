@@ -49,7 +49,6 @@ def single_lists():
             ('oap_age',int32),
             ('two_year',int32),            
             ('erp_age',int32),
-            ('len_ret',int32),
             ('oap_base',double),
             ('oap_add',double),
             ('erp_high',double),
@@ -62,16 +61,14 @@ def single_lists():
             ('simN',int32), 
             ('sim_seed',int32),  
             ('simM_init',double[:]),
-            ('simMA',int32[:]),
-            ('simST',int32[:]), 
+            ('simStates',int32[:,:]),
 
             # states
             ('ad_min',int32),
             ('ad_max',int32),            
             ('AD',int32[:]),
             ('MA',int32[:]),  
-            ('ST',int32[:,:]), 
-            ('inc_pre',double[:,:,:]),  
+            ('ST',int32[:,:]),  
             ('labor',double[:,:,:,:]),            
             ('survival_arr',double[:,:]),  
             ('pension_arr',double[:,:,:,:,:]),
@@ -115,8 +112,8 @@ def single_lists():
             ('v_plus_interp',double[:,:]),
 
             # post decision
-            ('q',double[:,:]),              # 2d
-            ('v_plus_raw',double[:,:])                            
+            ('avg_marg_u_plus',double[:,:,:,:,:,:,:]),  # 7d
+            ('v_plus_raw',double[:,:,:,:,:,:,:])                      
         ]     
 
     simlist = [ # (name, numba type), simulation data       
@@ -128,8 +125,7 @@ def single_lists():
             ('d',double[:,:]),
 
             # states
-            ('MA',int32[:]),
-            ('ST',int32[:]),
+            ('states',int32[:,:]),
 
             # dummies and probabilities
             ('alive',double[:,:]), 
@@ -143,7 +139,6 @@ def single_lists():
             ('choiceP',double[:,:]),
             ('deadP',double[:,:]),
             ('inc_shock',double[:,:,:]),
-            ('labor_array',double[:,:,:,:])
 
         ]
 
@@ -189,7 +184,7 @@ def couple_lists():
     sollist = [ # (name, numba type), solution data
 
             # solution
-            ('c',double[:,:,:,:,:,:,:,:]),    # 8d
+            ('c',double[:,:,:,:,:,:,:,:]),  # 8d
             ('m',double[:,:,:,:,:,:,:,:]),
             ('v',double[:,:,:,:,:,:,:,:]),                     
 
@@ -199,7 +194,7 @@ def couple_lists():
 
             # post decision
             ('q',double[:,:]),              # 2d
-            ('v_plus_raw',double[:,:])                            
+            ('v_raw',double[:,:])                                    
         ]              
 
     simlist = [ # (name,numba type), parameters, grids etc.
@@ -214,48 +209,36 @@ def couple_lists():
     return parlist,sollist,simlist
 
 
-def init_sim(par,sim,dev=1.25,add=0.8):
+def init_sim(par,sim):
 
-        # initialize simulation
+        # seed
         np.random.seed(par.sim_seed)
-        #par.simM_init = np.random.lognormal(-0.5*(dev**2),dev,size=par.simN)+add
-        # hardcoded to simN=100000
-        par.simM_init = np.array(np.array([10.0]*1095 +    # woman,erp=0,hs=0
-                                          [16.0]*405 +     # woman,erp=0,hs=1
-                                          [10.0]*35405 +   # woman,erp=1,hs=0
-                                          [16.0]*13095 +   # woman,erp=1,hs=1
-                                          [11.0]*2000 +    # man,erp=0,hs=0
-                                          [17.0]*500 +     # man,erp=0,hs=1
-                                          [11.0]*38000 +   # man,erp=1,hs=0
-                                          [17.0]*9500))    # man,erp=1,hs=1
-
-        # states
+        
+        # initialize simulation
         if par.couple:
-            par.simST_h = np.random.randint(len(par.ST),size=par.simN)
-            par.simST_w = np.random.randint(len(par.ST),size=par.simN)
+            pass
+        
         else:
-            # hardcoded to simN=100000
-            #par.simMA = np.array([1]*100000)
-            #par.simST = np.array([3]*100000)
-            par.simMA = np.array([0]*50000 + [1]*50000)   # equal split
-            par.simST = np.array([0]*1095 +     # woman,erp=0,hs=0
-                                     [1]*405 +      # woman,erp=0,hs=1
-                                     [2]*35405 +    # woman,erp=1,hs=0
-                                     [3]*13095 +    # woman,erp=1,hs=1
-                                     [0]*2000 +     # man,erp=0,hs=0
-                                     [1]*500 +      # man,erp=0,hs=1
-                                     [2]*38000 +    # man,erp=1,hs=0
-                                     [3]*9500)      # man,erp=1,hs=1
+        
+            # initialize m
+            m_init = np.array([10.0, 16.0, 10.0, 16.0, 11.0, 17.0, 11.0, 17.0])
+            n_groups = np.array([1095, 405, 35405, 13095, 2000, 500, 38000, 9500])
+            par.simN = np.sum(n_groups)
+            par.simM_init = np.repeat(m_init,n_groups)
 
-        # random draws for simulation
-        np.random.seed(par.sim_seed)        
-        sim.choiceP = np.random.rand(par.simT,par.simN)                            
-        sim.deadP = np.random.rand(par.simT,par.simN) 
+            # set states
+            states = np.array([(0,0), (0,1), (0,2), (0,3), (1,0), (1,1), (1,2), (1,3)])
+            par.simStates = np.transpose(np.vstack((np.repeat(states[:,0],n_groups), 
+                                                    np.repeat(states[:,1],n_groups))))
 
-        Tr = par.Tr
-        sim.inc_shock = np.nan*np.zeros((Tr,len(par.MA),par.simN))  
-        sim.inc_shock[:,0,:] = np.random.lognormal(-0.5*(par.sigma_xi_women**2),par.sigma_xi_women,size=(Tr,par.simN))
-        sim.inc_shock[:,1,:] = np.random.lognormal(-0.5*(par.sigma_xi_men**2),par.sigma_xi_men,size=(Tr,par.simN))
+            # random draws for simulation       
+            sim.choiceP = np.random.rand(par.simT,par.simN)                            
+            sim.deadP = np.random.rand(par.simT,par.simN) 
+
+            Tr = par.Tr
+            sim.inc_shock = np.nan*np.zeros((Tr,2,par.simN))  
+            sim.inc_shock[:,0,:] = np.random.lognormal(-0.5*(par.sigma_xi_women**2),par.sigma_xi_women,size=(Tr,par.simN))
+            sim.inc_shock[:,1,:] = np.random.lognormal(-0.5*(par.sigma_xi_men**2),par.sigma_xi_men,size=(Tr,par.simN))            
 
 
 def RetirementSystem(model):

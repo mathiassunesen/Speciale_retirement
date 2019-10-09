@@ -216,9 +216,10 @@ def log_euler(model,MA=[0,1],ST=[0,1,2,3],ages=[57,68],plot=False):
     # mask
     x = np.arange(ages[0], ages[1]+1)
     mask_t = transitions.inv_age(x,par)
-    mask = np.nonzero(np.isin(sim.ST,ST))[0]
+    states = sim.states
+    mask = np.nonzero(np.isin(states[:,1],ST))[0]
     if len(MA) == 1:
-        mask = mask[sim.MA[mask]==MA]
+        mask = mask[states[:,0][mask]==MA]
     
     # euler errors
     euler = sim.euler[mask_t] # time

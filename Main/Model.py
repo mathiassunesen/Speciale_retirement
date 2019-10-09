@@ -11,7 +11,6 @@ yaml.warnings({'YAMLLoadWarning': False})
 import time
 import numpy as np
 from numba import boolean, int32, int64, float64, double, njit, prange, typeof
-from numba.typed import Dict
 import itertools
 
 # consav package
@@ -64,6 +63,8 @@ class RetirementClass(ModelClass):
         # d. if couple also create a single class
         if couple:
             single_kwargs['start_T'] = self.par.start_T - self.par.ad_min # add some extra time periods in the bottom
+            for key,val in kwargs.items():
+                single_kwargs[key] = val           
             self.Single = RetirementClass(name=name+'_single',year=year,**single_kwargs)
     
     def pars(self,**kwargs):
@@ -99,7 +100,7 @@ class RetirementClass(ModelClass):
         
         # tax system
         setup.TaxSystem(self)
-
+        
         # retirement
         self.par.oap_age = 65
         self.par.two_year = 62
@@ -190,7 +191,6 @@ class RetirementClass(ModelClass):
         transitions.survival_precompute(self.par) 
         transitions.pension_precompute(self.par)
 
-
     def setup_grids(self):
         """ construct grids for states and shocks """
 
@@ -218,6 +218,7 @@ class RetirementClass(ModelClass):
             transitions.pension_precompute(self.par)            
 
         # prep
+        T = self.par.T
         NAD = len(self.par.AD)          # number of age differences             
         NST = len(self.par.ST)          # number of states
         Na = self.par.Na                # number of points in grid           
@@ -231,21 +232,25 @@ class RetirementClass(ModelClass):
             
         # solution
         if self.couple:
-            self.sol.c = np.nan*np.zeros((self.par.T,NAD,NST,NST,NRA,NRA,ND,Na))   
-            self.sol.m = np.nan*np.zeros((self.par.T,NAD,NST,NST,NRA,NRA,ND,Na))
-            self.sol.v = np.nan*np.zeros((self.par.T,NAD,NST,NST,NRA,NRA,ND,Na))   
+            self.sol.c = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))   
+            self.sol.m = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))
+            self.sol.v = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))   
         else:
-            self.sol.c = np.nan*np.zeros((self.par.T,NAD,NMA,NST,NRA,ND,Na))   
-            self.sol.m = np.nan*np.zeros((self.par.T,NAD,NMA,NST,NRA,ND,Na))
-            self.sol.v = np.nan*np.zeros((self.par.T,NAD,NMA,NST,NRA,ND,Na))            
+            self.sol.c = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))   
+            self.sol.m = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))
+            self.sol.v = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))            
 
         # interpolation
         self.sol.c_plus_interp = np.nan*np.zeros((ND,Na))
         self.sol.v_plus_interp = np.nan*np.zeros((ND,Na)) 
 
         # post decision
-        self.sol.q = np.nan*np.zeros((ND,Na))
-        self.sol.v_plus_raw = np.nan*np.zeros((ND,Na))
+        if self.couple:
+            self.sol.q = np.nan*np.zeros((ND,Na))
+            self.sol.v_raw = np.nan*np.zeros((ND,Na))
+        else:
+            self.sol.avg_marg_u_plus = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))
+            self.sol.v_plus_raw = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))
 
     def solve(self,recompute=False):
         """ solve the model """
@@ -277,21 +282,31 @@ class RetirementClass(ModelClass):
         self.sim.c = np.nan*np.zeros((self.par.simT,self.par.simN))
         self.sim.m = np.nan*np.zeros((self.par.simT,self.par.simN))
         self.sim.a = np.nan*np.zeros((self.par.simT,self.par.simN))
-        self.sim.d = np.nan*np.zeros((self.par.simT,self.par.simN))
+        if self.couple:
+            self.sim.d = np.nan*np.zeros((self.par.simT,self.par.simN,2))
+        else:    
+            self.sim.d = np.nan*np.zeros((self.par.simT,self.par.simN))
 
         # dummies and probabilities
-        self.sim.alive = np.ones((self.par.simT,self.par.simN))             # dummy for alive
-        self.sim.probs = np.zeros((self.par.simT,self.par.simN))            # retirement probs
-        self.sim.RA = 2*np.ones(self.par.simN)                         # retirement status
+        if self.couple:
+            self.sim.alive_c = np.ones((self.par.simT,self.par.simN,2))
+            self.sim.probs_c = np.zeros((self.par.simT,self.par.simN,2))     
+            self.sim.RA = 2*np.ones((self.par.simN,2))       
+        else:
+            self.sim.alive = np.ones((self.par.simT,self.par.simN))             # dummy for alive
+            self.sim.probs = np.zeros((self.par.simT,self.par.simN))            # retirement probs
+            self.sim.RA = 2*np.ones(self.par.simN)                              # retirement status
 
         # initialize m and d
-        self.sim.m[0,:] = self.par.simM_init                                # has computed in setup    
-        self.sim.d[0,:] = np.ones(self.par.simN)                            # all is working at t=0
+        self.sim.m[0,:] = self.par.simM_init                               
+        if self.couple:
+            self.sim.d[0] = np.ones((self.par.simN,2))
+        else:
+            self.sim.d[0] = np.ones(self.par.simN)                            # all is working at t=0
         
         # states
-        self.sim.MA = self.par.simMA                                        # has been computed in setup
-        self.sim.ST = self.par.simST                                        # has been computed in setup
-
+        self.sim.states = self.par.simStates        
+        
         # euler errors
         self.sim.euler = np.nan*np.zeros((self.par.simT-1,self.par.simN))
 
@@ -299,21 +314,18 @@ class RetirementClass(ModelClass):
     def simulate(self,euler=False,recompute=False):
         """ simulate model """
 
-        # a. allocate memory and draw random numbers 
+        # allocate memory
         self._simulate_prep(recompute)
-        
-        # b. simulate
-        simulate.lifecycle(self.sim,self.sol,self.par,euler)
+
+        # simulate
+        if self.couple:
+            simulate.lifecycle_c(self.sim,self.sol,self.par,euler)
+        else:
+            simulate.lifecycle(self.sim,self.sol,self.par,euler)
 
 
 # to debug code
-#Na = 20
-#single_kwargs = {'Na':Na}
-#data = RetirementClass(couple=True,single_kwargs=single_kwargs,Na=Na)
-# data = RetirementClass(couple=True)
-# data.solve()
-
-
-# data = RetirementClass()
+# single_kwargs = {'Na':20}
+# data = RetirementClass(couple=True, single_kwargs=single_kwargs, Na=20)
 # data.solve()
 # data.simulate(euler=True)
