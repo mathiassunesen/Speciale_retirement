@@ -1,4 +1,5 @@
 import numpy as np
+import time
 import scipy as sci
 from scipy.optimize import minimize
 
@@ -16,7 +17,7 @@ class SimulatedMinimumDistance():
     
     '''    
 
-    def __init__(self,model,mom_data,mom_fun,name='baseline',method='nelder-mead',est_par=[],est_par_save={},lb=int,ub=int,guess=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
+    def __init__(self,model,mom_data,mom_fun,bounds=None,name='baseline',method='nelder-mead',est_par=[],est_par_save={},lb=int,ub=int,guess=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
         
         self.model = model
         self.mom_data = mom_data
@@ -24,6 +25,7 @@ class SimulatedMinimumDistance():
         self.name = name
 
         # estimation settings
+        self.bounds = bounds
         self.options = options
         self.print_iter = print_iter
         self.method = method
@@ -35,6 +37,7 @@ class SimulatedMinimumDistance():
         self.est_par = est_par
         self.est_par_save = est_par_save
         self.iter = 0
+        self.time = {self.iter: time.time()}
 
 
     def obj_fun(self,theta,W,*args):
@@ -43,7 +46,9 @@ class SimulatedMinimumDistance():
 
         if self.print_iter[0]:
             if self.iter % self.print_iter[1] == 0:
-                print('Iteration: ', self.iter)
+                self.time[self.iter] = time.time()
+                toctic = self.time[self.iter] - self.time[self.iter-self.print_iter[1]]
+                print('Iteration:', self.iter, '(' + str(np.round(toctic/60,2)) + ' minutes)')
                 for p in range(len(theta)):
                     print(f' {self.est_par[p]}={theta[p]:2.3f}', end='')
 
@@ -78,7 +83,7 @@ class SimulatedMinimumDistance():
         assert(len(W[0])==len(self.mom_data)) # check dimensions of W and mom_data
 
         # estimate
-        self.est_out = minimize(self.obj_fun, theta0, (W, *args), method=self.method,options=self.options)
+        self.est_out = minimize(self.obj_fun, theta0, (W, *args), bounds=self.bounds, method=self.method,options=self.options)
 
         # return output
         self.est = self.est_out.x
