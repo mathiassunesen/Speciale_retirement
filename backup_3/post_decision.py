@@ -16,7 +16,7 @@ import egm
 ### Functions for singles #####
 ###############################
 @njit(parallel=True)
-def compute(t,ad,ma,st,ra,D,sol,par):
+def compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par):
     """ compute post decision states v_plus_raw and q, which is used to solve the bellman equation
     
     Args:
@@ -34,15 +34,15 @@ def compute(t,ad,ma,st,ra,D,sol,par):
     """        
 
     # unpack solution
-    c = sol.c[t+1,ad,ma,st]
-    m = sol.m[t+1,ad,ma,st]
-    v = sol.v[t+1,ad,ma,st]
+    c = sol_c[t+1]
+    m = sol_m[t+1]
+    v = sol_v[t+1]
 
     # unpack rest
-    c_plus_interp = sol.c_plus_interp[:,:]
-    v_plus_interp = sol.v_plus_interp[:,:]  
-    avg_marg_u_plus = sol.avg_marg_u_plus[t+1,ad,ma,st,ra]
-    v_plus_raw = sol.v_plus_raw[t+1,ad,ma,st,ra]
+    c_plus_interp = np.nan*np.zeros(c[0].shape)#sol.c_plus_interp[:,:]
+    v_plus_interp = np.nan*np.zeros(c[0].shape)#sol.v_plus_interp[:,:]  
+    avg_marg_u_plus = sol_avg_marg_u_plus[t+1,ra]
+    v_plus_raw = sol_v_plus_raw[t+1,ra]
        
     # loop over the choices
     for d in D:

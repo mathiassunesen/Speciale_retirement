@@ -12,8 +12,8 @@ import transitions
 import last_period
 import funs
 
-
-def solve(model):
+@njit(parallel=True)
+def solve(sol,par):
     """ solve the model for singles after the solution have been allocated
     
     Args:
@@ -23,51 +23,68 @@ def solve(model):
         stores solution in model.sol
     """
     # unpack 
-    sol = model.sol
-    par = model.par
-    ret_system = model.ret_system   
-    oap_age = max(ret_system)+1
-    erp_age = min(ret_system)+1   
+    # sol = model.sol
+    # par = model.par
+    # ret_system = model.ret_system   
+    oap_age = transitions.inv_age(par.oap_age,par)#max(ret_system)+1
+    #erp_age = min(ret_system)+1   
+    ST = np.array([(0,0), (0,1), (0,2), (0,3), (1,0), (1,1), (1,2), (1,3)])
 
-    # backwards induction
-    for ad in par.AD:                           # loop over age differences (just zero here)
-        for ma in range(len(par.MA)):           # loop over gender
-            for st in range(len(par.ST)):       # loop over states
-                for t in range(par.T-1,-1,-1):  # same as reversed(range(par.T))
+    for j in prange(len(ST)):
+        ad = 0
+        ma = ST[j,0]
+        st = ST[j,1]
 
-                    # eligibility to erp
-                    elig = transitions.state_translate(st,'elig',par)
+    # # backwards induction
+    # for st in prange(len(par.ST)):       # loop over states
+    #     for ad in par.AD:                           # loop over age differences (just zero here)
+    #         for ma in range(len(par.MA)):           # loop over gender
 
-                    # 1. Oap age: Solution is independent of retirement age
-                    if t+1 >= oap_age:
-                        if elig == 1:
-                            ra = 0
-                        else:
-                            ra = 2
+        sol_c = sol.c[:,ad,ma,st]
+        sol_m = sol.m[:,ad,ma,st]
+        sol_v = sol.v[:,ad,ma,st]
+        sol_v_plus_raw = sol.v_plus_raw[:,ad,ma,st]
+        sol_avg_marg_u_plus = sol.avg_marg_u_plus[:,ad,ma,st]
+        solve_single_model(ad,ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par,oap_age)
 
-                        if t == par.T-1:    # last period
-                            last_period.solve(t,ad,ma,st,ra,0,sol,par)
-                        
-                        elif t+1 >= par.Tr: # forced to retire
-                            D = np.array([0])
-                            egm.solve(t,ad,ma,st,ra,D,sol,par)
+@njit(parallel=True)
+def solve_single_model(ad,ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par,oap_age):
 
-                        else:               # not forced to retire
-                            D = np.array([0,1])
-                            egm.solve(t,ad,ma,st,ra,D,sol,par)
+    # eligibility to erp
+    elig = transitions.state_translate(st,'elig',par)
 
-                    # 2. Erp age and eligible: Solution depends of retirement age
-                    elif (t+1 >= erp_age-1 and elig == 1):
-                        for rs in ret_system[t+1]:  # ret_system contains information on how to recalculate solution
-                            ra = rs[0]
-                            D = rs[1]
-                            egm.solve(t,ad,ma,st,ra,D,sol,par)
+    for t in range(par.T-1,-1,-1):  # same as reversed(range(par.T))    
 
-                    # 3. Pre Erp age or not eligible: Solution is independent of retirement age
-                    else:
-                        ra = 2
-                        D = np.array([0,1])
-                        egm.solve(t,ad,ma,st,ra,D,sol,par)
+        # 1. Oap age: Solution is independent of retirement age
+        if t+1 >= oap_age:
+            if elig == 1:
+                ra = 0
+            else:
+                ra = 2
+
+            if t == par.T-1:    # last period
+                last_period.solve(t,ad,ma,st,ra,0,sol_c,sol_m,sol_v,par)
+                            
+            elif t+1 >= par.Tr: # forced to retire
+                D = np.array([0])
+                egm.solve(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par)
+
+            else:               # not forced to retire
+                D = np.array([0,1])
+                egm.solve(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par)
+
+                        # # 2. Erp age and eligible: Solution depends of retirement age
+                        # elif (t+1 >= erp_age-1 and elig == 1):
+                        #     for rs in ret_system[t+1]:  # ret_system contains information on how to recalculate solution
+                        #         ra = rs[0]
+                        #         D = rs[1]
+                        #         egm.solve(t,ad,ma,st,ra,D,sol,par)
+
+                        # # 3. Pre Erp age or not eligible: Solution is independent of retirement age
+                        # else:
+                        #     ra = 2
+                        #     D = np.array([0,1])
+                        #     egm.solve(t,ad,ma,st,ra,D,sol,par)
 
 
 

@@ -19,14 +19,14 @@ envelope_c = upperenvelope.create(utility.func_c)
 ### Functions for singles #####
 ###############################
 @njit(parallel=True)
-def solve(t,ad,ma,st,ra,d,sol,par):
+def solve(t,ad,ma,st,ra,d,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par):
     """ wrapper which calls both post_decision.compute and egm.solve_bellman"""
 
-    post_decision.compute(t,ad,ma,st,ra,d,sol,par)
-    solve_bellman(t,ad,ma,st,ra,d,sol,par)  
+    post_decision.compute(t,ad,ma,st,ra,d,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par)
+    solve_bellman(t,ad,ma,st,ra,d,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par)  
 
 @njit(parallel=True)
-def solve_bellman(t,ad,ma,st,ra,D,sol,par):
+def solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,par):
     """ solve the bellman equation for singles using the endogenous grid method
     
     Args:
@@ -44,14 +44,14 @@ def solve_bellman(t,ad,ma,st,ra,D,sol,par):
     """    
 
     # unpack solution
-    c = sol.c[t,ad,ma,st,ra]
-    m = sol.m[t,ad,ma,st,ra]
-    v = sol.v[t,ad,ma,st,ra]
+    c = sol_c[t,ra]
+    m = sol_m[t,ra]
+    v = sol_v[t,ra]
 
     # unpack rest
     a = par.grid_a
-    avg_marg_u_plus = sol.avg_marg_u_plus[t+1,ad,ma,st,ra]
-    v_plus_raw = sol.v_plus_raw[t+1,ad,ma,st,ra]        
+    avg_marg_u_plus = sol_avg_marg_u_plus[t+1,ra]
+    v_plus_raw = sol_v_plus_raw[t+1,ra]        
     pi_plus = transitions.survival_look_up(t+1,ma,par)   
 
     # loop over the choices

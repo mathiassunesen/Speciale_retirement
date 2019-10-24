@@ -26,7 +26,7 @@ def GaussHermite(n):
     """
     return np.polynomial.hermite.hermgauss(n)
 
-def GaussHermite_lognorm(sigma, n):
+def GaussHermite_lognorm(var, n):
     """ GaussHermite nodes and weights for lognormal shocks
     
     Args:
@@ -38,14 +38,14 @@ def GaussHermite_lognorm(sigma, n):
     """    
     
     x,w = GaussHermite(n)
-
-    x = np.exp(x*np.sqrt(2)*sigma - 0.5*sigma**2)
+    sigma = np.sqrt(var)
+    x = np.exp(x*np.sqrt(2)*sigma - 0.5*var)
     w = w/np.sqrt(np.pi)
 
     assert(1 - sum(w*x) < 1e-8)
     return x,w 
 
-def GH_lognorm_corr(sigma_men,sigma_women,cov,Nxi_men,Nxi_women):
+def GH_lognorm_corr(var_men,var_women,cov,Nxi_men,Nxi_women):
     """ GaussHermite nodes and weights for correlated lognormal shocks
     
     Args:
@@ -67,10 +67,10 @@ def GH_lognorm_corr(sigma_men,sigma_women,cov,Nxi_men,Nxi_women):
     x2 = np.sqrt(2)*x2
     w2 = w2/np.sqrt(np.pi) 
     
-    mean1 = -0.5*sigma_men**2
-    mean2 = -0.5*sigma_women**2
+    mean1 = -0.5*var_men
+    mean2 = -0.5*var_women
 
-    cov_matrix = np.array(([sigma_men, cov], [cov, sigma_women]))
+    cov_matrix = np.array(([var_men, cov], [cov, var_women]))
     chol = np.linalg.cholesky(cov_matrix)
     assert(np.allclose(cov_matrix[:], chol @ np.transpose(chol)))
 

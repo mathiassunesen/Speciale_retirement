@@ -143,10 +143,13 @@ class RetirementClass(ModelClass):
 
         # uncertainty/variance parameters
         self.par.sigma_eta = 0.435                  # taste shock
-        self.par.sigma_xi_men = np.sqrt(0.544)      # income shock
-        self.par.sigma_xi_women = np.sqrt(0.399)    # income shock
         if self.couple:
-            self.par.sigma_xi_cov = 0.011           # covariance of income shocks            
+            self.par.var_men = 0.288                # income shock
+            self.par.var_women = 0.347              # income shock
+            self.par.cov = 0.011                    # covariance of income shocks
+        else:
+            self.par.var_men = 0.544                # income shock
+            self.par.var_women = 0.399              # income shock
 
         # initial estimations
         if self.couple:
@@ -198,12 +201,12 @@ class RetirementClass(ModelClass):
         self.par.grid_a = misc.nonlinspace(self.par.tol,self.par.a_max,self.par.Na,self.par.a_phi)
         
         # b. shocks (quadrature nodes and weights for GaussHermite)
-        self.par.xi_men,self.par.xi_men_w = funs.GaussHermite_lognorm(self.par.sigma_xi_men,self.par.Nxi)
-        self.par.xi_women,self.par.xi_women_w = funs.GaussHermite_lognorm(self.par.sigma_xi_women,self.par.Nxi)   
+        self.par.xi_men,self.par.xi_men_w = funs.GaussHermite_lognorm(self.par.var_men,self.par.Nxi)
+        self.par.xi_women,self.par.xi_women_w = funs.GaussHermite_lognorm(self.par.var_women,self.par.Nxi)   
         
         # c. correlated shocks for joint labor income (only for couples)
         if self.couple:
-            self.par.xi_men_corr,self.par.xi_women_corr,self.par.w_corr = funs.GH_lognorm_corr(self.par.sigma_xi_men,self.par.sigma_xi_women,self.par.sigma_xi_cov,self.par.Nxi_men,self.par.Nxi_women)    
+            self.par.xi_men_corr,self.par.xi_women_corr,self.par.w_corr = funs.GH_lognorm_corr(self.par.var_men,self.par.var_women,self.par.cov,self.par.Nxi_men,self.par.Nxi_women)    
 
     #########
     # solve #
@@ -265,7 +268,7 @@ class RetirementClass(ModelClass):
             solution.solve(self.Single)
             solution.solve_c(self)
         else:           # else only solve single model
-            solution.solve(self)
+            solution.solve(self.sol,self.par)
                             
 
     ############
@@ -293,16 +296,16 @@ class RetirementClass(ModelClass):
             self.sim.probs_c = np.zeros((self.par.simT,self.par.simN,2))     
             self.sim.RA = 2*np.ones((self.par.simN,2))       
         else:
-            self.sim.alive = np.ones((self.par.simT,self.par.simN))             # dummy for alive
-            self.sim.probs = np.zeros((self.par.simT,self.par.simN))            # retirement probs
-            self.sim.RA = 2*np.ones(self.par.simN)                              # retirement status
+            self.sim.alive = np.ones((self.par.simT,self.par.simN,1))   # dummy for alive
+            self.sim.probs = np.zeros((self.par.simT,self.par.simN,1))  # retirement probs
+            self.sim.RA = 2*np.ones((self.par.simN,1))                  # retirement status
 
         # initialize m and d
         self.sim.m[0,:] = self.par.simM_init                               
         if self.couple:
             self.sim.d[0] = np.ones((self.par.simN,2))
         else:
-            self.sim.d[0] = np.ones(self.par.simN)                            # all is working at t=0
+            self.sim.d[0] = np.ones(self.par.simN)                             
         
         # states
         self.sim.states = self.par.simStates        

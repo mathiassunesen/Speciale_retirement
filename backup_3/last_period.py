@@ -7,7 +7,7 @@ import utility
 import transitions
 
 @njit(parallel=True)
-def solve(t,ad,ma,st,ra,d,sol,par):
+def solve(t,ad,ma,st,ra,d,sol_c,sol_m,sol_v,par):
     """ solve the model in the last period for singles
     
     Args:
@@ -25,9 +25,9 @@ def solve(t,ad,ma,st,ra,d,sol,par):
     """
         
     # unpack (helps numba optimize)
-    c = sol.c[t,ad,ma,st,ra,d,:] # time, age difference, gender, states, retirement status, choices, grid
-    m = sol.m[t,ad,ma,st,ra,d,:]
-    v = sol.v[t,ad,ma,st,ra,d,:]
+    c = sol_c[t,ra,d,:] # time, age difference, gender, states, retirement status, choices, grid
+    m = sol_m[t,ra,d,:]
+    v = sol_v[t,ra,d,:]
 
     # initialize
     m[:] = par.grid_a

@@ -1,6 +1,7 @@
 # global modules
 from numba import boolean, int32, int64, float64, double, njit, typeof
 import numpy as np
+import itertools
 
 # local modules
 import transitions
@@ -83,8 +84,8 @@ def single_lists():
                 
             # uncertainty/variance parameters
             ('sigma_eta',double), 
-            ('sigma_xi_men',double), 
-            ('sigma_xi_women',double),
+            ('var_men',double), 
+            ('var_women',double),
             ('xi_men',double[:]),
             ('xi_men_w',double[:]),
             ('xi_women',double[:]),
@@ -128,16 +129,16 @@ def single_lists():
             ('states',int32[:,:]),
 
             # dummies and probabilities
-            ('alive',double[:,:]), 
-            ('probs',double[:,:]), 
-            ('RA',double[:]),
+            ('alive',double[:,:,:]), 
+            ('probs',double[:,:,:]), 
+            ('RA',double[:,:]),
 
             # euler errors                      
             ('euler',double[:,:]),          
 
             # random shocks
-            ('choiceP',double[:,:]),
-            ('deadP',double[:,:]),
+            ('choiceP',double[:,:,:]),
+            ('deadP',double[:,:,:]),
             ('inc_shock',double[:,:,:]),
 
         ]
@@ -170,10 +171,7 @@ def couple_lists():
             ('Nxi_women',int32),                         
                 
             # uncertainty/variance parameters
-            ('sigma_eta',double), 
-            ('sigma_xi_men',double), 
-            ('sigma_xi_women',double),
-            ('sigma_xi_cov',double),
+            ('cov',double),
             ('xi_men_corr',double[:]),
             ('xi_women_corr',double[:]),            
             ('w_corr',double[:])         
@@ -216,7 +214,34 @@ def init_sim(par,sim):
         
         # initialize simulation
         if par.couple:
-            pass
+            
+            # initialize m 
+            m_init = 10*np.ones(16)
+            n_groups = (100000/16)*np.ones(16)
+            par.simN = np.sum(n_groups) 
+            par.simM_init = np.repeat(m_init,n_groups)
+
+            # set states
+            states = list(itertools.product([0,1,2,3], repeat=2))
+            for i in range(len(states)):
+                states[i] = (0,) + states[i]
+            states = np.array(states)
+            par.simStates = np.transpose(np.vstack((np.repeat(states[:,0],n_groups),
+                                                    np.repeat(states[:,1],n_groups),
+                                                    np.repeat(states[:,2],n_groups))))
+
+            # random draws for simulation
+            sim.choiceP = np.random.rand((par.simT,par.simN,2))
+            sim.deadP = np.random.rand((par.simT,par.simN,2))  
+            
+            # random draws for labor income
+            Tr = par.Tr
+            sim.inc_shock = np.nan*np.zeros((Tr,par.simN,3))
+            mu = -0.5*np.array([par.sigma_xi_women**2, par.sigma_xi_men**2])
+            cov = np.array(([par.var_men, par.cov], [par.cov, par.var_women]))            
+            sim.inc_shock[:,:,0] = np.exp(np.random.normal(mu[0],par.var_women,size=(Tr,par.simN)))
+            sim.inc_shock[:,:,1] = np.exp(np.random.normal(mu[1],par.var_men,size=(Tr,par.simN)))
+            sim.inc_shock[:,:,2] = np.exp(np.random.multivariate_normal(mu,cov,size=(Tr,par.simN)))        
         
         else:
         
@@ -232,13 +257,14 @@ def init_sim(par,sim):
                                                     np.repeat(states[:,1],n_groups))))
 
             # random draws for simulation       
-            sim.choiceP = np.random.rand(par.simT,par.simN)                            
-            sim.deadP = np.random.rand(par.simT,par.simN) 
+            sim.choiceP = np.random.rand(par.simT,par.simN,1)                            
+            sim.deadP = np.random.rand(par.simT,par.simN,1) 
 
+            # random draws for labor income
             Tr = par.Tr
-            sim.inc_shock = np.nan*np.zeros((Tr,2,par.simN))  
-            sim.inc_shock[:,0,:] = np.random.lognormal(-0.5*(par.sigma_xi_women**2),par.sigma_xi_women,size=(Tr,par.simN))
-            sim.inc_shock[:,1,:] = np.random.lognormal(-0.5*(par.sigma_xi_men**2),par.sigma_xi_men,size=(Tr,par.simN))            
+            sim.inc_shock = np.nan*np.zeros((Tr,par.simN,2))  
+            sim.inc_shock[:,:,0] = np.exp(np.random.normal(-0.5*(par.var_women),np.sqrt(par.var_women),size=(Tr,par.simN)))
+            sim.inc_shock[:,:,1] = np.exp(np.random.normal(-0.5*(par.var_men),np.sqrt(par.var_men),size=(Tr,par.simN)))            
 
 
 def RetirementSystem(model):
