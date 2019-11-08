@@ -15,6 +15,7 @@ import funs
 
 @njit(parallel=True)
 def ret_dict(t,par):
+    """ function which mimics a dict, returns information on how to resolve the model for retirement status"""
 
     if t == par.T_oap-1:
         ra = np.array([0,1,2])
@@ -48,7 +49,7 @@ def solve(sol,par):
 
         # unpack solution
         sol_c = sol.c[:,ad,ma,st]
-        sol_m = sol.m[:,ad,ma,st]
+        sol_m = sol.m
         sol_v = sol.v[:,ad,ma,st]
         sol_v_plus_raw = sol.v_plus_raw[:,ad,ma,st]
         sol_avg_marg_u_plus = sol.avg_marg_u_plus[:,ad,ma,st]
@@ -115,12 +116,12 @@ def solve_c(sol,single_sol,par):
 
         # solve
         solve_couple_model(ad,st_h,st_w,par,par.grid_a,
-                           sol.c,sol.m,sol.v,sol.v_raw,sol.q,
+                           sol.c,sol.m,sol.v,
                            single_sol.v_plus_raw,single_sol.avg_marg_u_plus)                               
 
 @njit(parallel=True)
 def solve_couple_model(ad,st_h,st_w,par,a,
-                       sol_c,sol_m,sol_v,sol_v_raw,sol_q,
+                       sol_c,sol_m,sol_v,
                        single_sol_v_plus_raw,single_sol_avg_marg_u_plus):
 
     # eligibility to erp
@@ -153,7 +154,7 @@ def solve_couple_model(ad,st_h,st_w,par,a,
 
                 # solve
                 egm.solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
-                                    sol_c,sol_m,sol_v,sol_v_raw,sol_q,
+                                    sol_c,sol_m,sol_v,
                                     single_sol_v_plus_raw,single_sol_avg_marg_u_plus)
 
         # 2. Pre Oap age: Solution potentially depends on retirement age
@@ -180,7 +181,7 @@ def solve_couple_model(ad,st_h,st_w,par,a,
                                 D_w = np.array([0])
 
                             egm.solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
-                                                sol_c,sol_m,sol_v,sol_v_raw,sol_q,
+                                                sol_c,sol_m,sol_v,
                                                 single_sol_v_plus_raw,single_sol_avg_marg_u_plus)
                                 
                     # don't need to recalculate for wife (but still do for husband)
@@ -188,7 +189,7 @@ def solve_couple_model(ad,st_h,st_w,par,a,
                         ra_w = transitions.ra_look_up(t+ad,st_w,0,1,par)
                         D_w = np.array([0,1])
                         egm.solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
-                                            sol_c,sol_m,sol_v,sol_v_raw,sol_q,
+                                            sol_c,sol_m,sol_v,
                                             single_sol_v_plus_raw,single_sol_avg_marg_u_plus)
                         
             # if we don't need to recalculate solution, husband
@@ -207,7 +208,7 @@ def solve_couple_model(ad,st_h,st_w,par,a,
                                 D_w = np.array([0])
                                 
                             egm.solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
-                                                sol_c,sol_m,sol_v,sol_v_raw,sol_q,
+                                                sol_c,sol_m,sol_v,
                                                 single_sol_v_plus_raw,single_sol_avg_marg_u_plus) 
                             
                 # don't need to recalculate solution for any of them
@@ -215,5 +216,5 @@ def solve_couple_model(ad,st_h,st_w,par,a,
                     ra_w = transitions.ra_look_up(t+ad,st_w,0,1,par)
                     D_w = np.array([0,1])
                     egm.solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
-                                        sol_c,sol_m,sol_v,sol_v_raw,sol_q,
+                                        sol_c,sol_m,sol_v,
                                         single_sol_v_plus_raw,single_sol_avg_marg_u_plus) 

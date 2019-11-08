@@ -1,7 +1,13 @@
+
+# global modules
 import numpy as np
 import time
 import scipy as sci
 from scipy.optimize import minimize
+import pickle
+
+# local modules
+import transitions
 
 # TODO: 
 # 1) add a saving-module?:
@@ -17,7 +23,7 @@ class SimulatedMinimumDistance():
     
     '''    
 
-    def __init__(self,model,mom_data,mom_fun,bounds=None,name='baseline',method='nelder-mead',est_par=[],est_par_save={},lb=int,ub=int,guess=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
+    def __init__(self,model,mom_data,mom_fun,bounds=None,name='baseline',method='nelder-mead',est_par=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
         
         self.model = model
         self.mom_data = mom_data
@@ -29,16 +35,8 @@ class SimulatedMinimumDistance():
         self.options = options
         self.print_iter = print_iter
         self.method = method
-
-        self.lb = lb
-        self.ub = ub
-
-        self.save = save #se efter save og est_par_save - når dette skal ligges over i main.
-        self.est_par = est_par
-        self.est_par_save = est_par_save
         self.iter = 0
         self.time = {self.iter: time.time()}
-
 
     def obj_fun(self,theta,W,*args):
         
@@ -50,13 +48,13 @@ class SimulatedMinimumDistance():
                 toctic = self.time[self.iter] - self.time[self.iter-self.print_iter[1]]
                 print('Iteration:', self.iter, '(' + str(np.round(toctic/60,2)) + ' minutes)')
                 for p in range(len(theta)):
-                    print(f' {self.est_par[p]}={theta[p]:2.3f}', end='')
+                    print(f' {self.est_par[p]}={theta[p]:2.4f}', end='')
 
         # 1. update parameters 
         for i in range(len(self.est_par)):
             setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
-            if i==0 or i==1 or i==2 or i==6:
-                setattr(self.model.Single.par,self.est_par[i],theta[i]) # like par.key = val                
+            if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
+                setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
 
         # 2. solve model with current parameters
         self.model.solve()
@@ -67,20 +65,15 @@ class SimulatedMinimumDistance():
 
         # 4. calculate objective function and return it
         diff = self.mom_data - self.mom_sim
-        self.obj  = (np.transpose(diff) @ W) @ diff
+        self.obj  = ((np.transpose(diff) @ W) @ diff)
 
         if self.print_iter[0]:
             if self.iter % self.print_iter[1] == 0:
                 if self.model.couple:
-                    print(f' -> {self.obj/diff.size:2.4f}')
+                    print(f' -> {self.obj:2.4f}')
                 else:
                     print(f' -> {self.obj:2.4f}')
         
-        if self.save:
-            for p in range(len(theta)):
-                self.est_par_save[self.est_par[p]].append(theta[p])
-            self.est_par_save['obj_func'].append(self.obj)
-
         return self.obj 
 
     def estimate(self,theta0,W,*args):
@@ -93,45 +86,67 @@ class SimulatedMinimumDistance():
         # return output
         self.est = self.est_out.x
         self.W = W     
-
-         
-    def multistart_estimate(self,guess,W,*args):
-        # TODO: consider multistart-loop with several algortihms - that could alternatively be hard-coded outside
-        
-  
-        assert(len(W[0])==len(self.mom_data)) # check dimensions of W and mom_data
-        
-        for i in guess:
+    
+    def MultiStart(self,theta0,weight,options={'print': True, 'time': 'min'}):
+            
+        # time
+        tic_total = time.time()
+            
+        # preallocate
+        theta = np.nan*np.zeros(np.array(theta0).shape)
+        obj = np.nan*np.zeros(len(theta0))
+            
+        for p in range(len(theta0)):
+                
             # estimate
-            self.est_out = minimize(self.obj_fun, i, (W, *args), method=self.method,options=self.options)
+            tic = time.time()
+            self.estimate(theta0[p],weight)
+            toc = time.time()
+                
+            # save
+            theta[p] = self.est
+            obj[p] = self.obj
+                
+            # print
+            if options['print']:
+                    
+                if options['time'] == 'sec':
+                    tid = str(np.round(toc-tic,1)) + ' sec'
+                if options['time'] == 'min':
+                    tid = str(np.round((toc-tic)/60,1)) + ' min'
+                if options['time'] == 'hours':
+                    tid = str(np.round((toc-tic)/(60**2),1)) + ' hours'
+                    
+                print(p+1, 'estimation:')
+                print('success:', self.est_out.success,'|', 'feval:', self.est_out.nfev, '|', 
+                      'time:', tid, '|', 'obj:', self.obj)
+                print('start par:', theta0[p])
+                print('par:      ', self.est)
+                print('')
+                    
+        # final estimation
+        idx = np.argmin(obj)
+        self.estimate(theta[idx],weight)
+        toc_total = time.time()
+        if options['print']:
+            print('final estimation:')
+            print('success:', self.est_out.success,'|', 'feval:', self.est_out.nfev, '|', 'obj:', self.obj)
+            print('total estimation time:', str(np.round((toc_total-tic_total)/(60**2),1)) + ' hours')
+            print('start par:', theta[idx])            
+            print('par:', self.est)
+            print('')
 
-        # return output
-        self.est = self.est_out.x
-        self.W = W
-    
-    def multistart_V(self, ng, guess):
-        # ng = number of guess - number of starting points
-        # guess: list of variables and the lower and upper bound of starting points.
-    
-        #Laver en dict med start værdier for hver parameter vi vil estimer:
-        q = {'{}'.format(i):[] for i in self.est_par}
-        for key in guess:
-            for i in range(ng):
-                q[key].append(np.random.uniform(guess[key][0],guess[key][1]))
-    
-        #Laver en liste med hvert gæt - dvs en startværdi for hver parameter - denne bruges som insdput i estimate.
-        start_values = [[] for i in range(ng)]
-        for i in range(ng):
-            for key in q:
-                start_values[i].append(q[key][i])
-        return start_values
-
-    def std_error(self,theta,W,Omega,Nobs,Nsim,step=1.0e-4,*args):
+    def std_error(self,theta,W,Nobs,Nsim,step=1.0e-4,*args):
         ''' Calculate standard errors and sensitivity measures '''
 
         num_par = len(theta)
         num_mom = len(W[0])
 
+        self.obj_fun(theta,W)
+        diff = self.mom_data - self.mom_sim
+        diff = diff.reshape((len(diff),1))
+        Omega = diff @ np.transpose(diff)
+        
         # 1. numerical gradient. The objective function is (data - sim)'*W*(data - sim) so take the negative of mom_sim
         grad = np.empty((num_mom,num_par))
         for p in range(num_par):
@@ -235,3 +250,82 @@ class SimulatedMinimumDistance():
             
             self.sens2e = ela
 
+def MomFunSingle(sim,par,calc='mean'):
+    """ compute moments for single model """
+
+    # unpack
+    states = np.unique(sim.states,axis=0)
+    MA = sim.states[:,0]
+    ST = sim.states[:,1]    
+    probs = sim.probs[:,1:,0]*100 # 1: means exclude age 57 (since first prob is at 58)
+        
+    # initialize
+    T = probs.shape[1]
+    N = len(states)
+    mom = np.zeros((T,N))
+    
+    # compute moments
+    for i in range(N):
+        ma = states[i,0]
+        st = states[i,1]
+        idx = np.nonzero((MA==ma) & (ST==st))[0]
+        if calc == 'mean': 
+            mom[:,i] = np.nanmean(probs[idx,:],axis=0)
+        elif calc == 'std':
+            mom[:,i] = np.nanstd(probs[idx,:],axis=0)
+    return mom.ravel() # collapse across rows (C-order)
+       
+def MomFunCouple(sim,par,std=False):
+    """ compute moments for couple model """    
+    
+    # unpack
+    states = np.unique(sim.states,axis=0)
+    AD = sim.states[:,0]
+    ST_h = sim.states[:,1]    
+    ST_w = sim.states[:,2]
+    probs_h = sim.probs[:,1+par.ad_min:,1]*100 # 1: means exclude age 57 (since first prob is at 58)
+    probs_w = sim.probs[:,1+par.ad_min:,0]*100
+    
+    # initialize
+    T = probs_h.shape[1]
+    N = len(states)
+    mom = np.zeros((2,T,N))
+    
+    # compute moments
+    for i in range(N):
+        ad = states[i,0]
+        st_h = states[i,1]
+        st_w = states[i,2]
+        idx = np.nonzero((AD==ad) & (ST_h==st_h) & (ST_w==st_w))[0]
+        if std:
+            mom[0,:,i] = np.nanstd(probs_h[idx,:],axis=0)
+            mom[1,:,i] = np.nanstd(probs_w[idx,:],axis=0)           
+        else:
+            mom[0,:,i] = np.nanmean(probs_h[idx,:],axis=0)
+            mom[1,:,i] = np.nanmean(probs_w[idx,:],axis=0)            
+    mom = mom.ravel()
+    mom[np.isnan(mom)] = 0 # there will be some nans,since we don't observe probs for all wives (due to age difference)
+    return mom             # and some groups are potentially very small, so if all die, then we don't observe probs
+
+def save_est(est_par,theta,name):
+    """ save estimated parameters to "estimates"-folder """
+    EstDict = dict(zip(est_par,theta))
+    with open('estimates/'+str(name)+'.pickle', 'wb') as handle:
+        pickle.dump(EstDict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+def load_est(name,couple=False):
+    """ load estimated parameters from "estimates"-folder """    
+    with open('estimates/'+str(name)+'.pickle', 'rb') as handle:
+        EstDict = pickle.load(handle)
+    
+    if couple:
+        single_par = ['alpha_0_male', 'alpha_0_female', 'alpha_1', 'sigma_eta']
+        CoupleDict = {}
+        SingleDict = {}
+        for key,val in EstDict.items():
+            CoupleDict[key] = val
+            if key in single_par:
+                SingleDict[key] = val
+        return CoupleDict,SingleDict
+    else:
+        return EstDict

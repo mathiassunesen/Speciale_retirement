@@ -26,13 +26,13 @@ def solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_
     # compute post decision (and store results, since they are needed in couple model)
     v_plus_raw,avg_marg_u_plus = post_decision.compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par)    
     sol_v_plus_raw[t+1,ra] = v_plus_raw
-    sol_avg_marg_u_plus[t+1,ra] = avg_marg_u_plus
+    sol_avg_marg_u_plus[t+1,ra] = avg_marg_u_plus    
     
     # unpack
     c = sol_c[t,ra]
-    m = sol_m[t,ra]
+    m = sol_m
     v = sol_v[t,ra]        
-    pi_plus = transitions.survival_look_up(t+1,ma,par)   
+    pi_plus = transitions.survival_lookup_single(t+1,ma,st,par)   
 
     # loop over the choices
     for d in D:
@@ -46,8 +46,7 @@ def solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_
         v_raw = par.beta*(pi_plus*v_plus_raw[d] + (1-pi_plus)*par.gamma*a)  # without utility (added in envelope)
 
         # c. upper envelope
-        m[d] = a                            # common grid
-        envelope(a,m_raw,c_raw,v_raw,m[d],  # input
+        envelope(a,m_raw,c_raw,v_raw,m,     # input
                  c[d],v[d],                 # output
                  d,ma,st,par)               # args for utility function  
 
@@ -57,7 +56,7 @@ def solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_
 ###############################
 @njit(parallel=True)
 def solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
-                    sol_c,sol_m,sol_v,sol_v_raw,sol_q,
+                    sol_c,sol_m,sol_v,
                     single_sol_v_plus_raw,single_sol_avg_marg_u_plus):
     """ solve the bellman equation for singles"""    
 

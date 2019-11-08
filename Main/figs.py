@@ -14,43 +14,33 @@ from consav import linear_interp
 import transitions
 import funs
 
+# global settings
 lw = 3
 fs = 17
+line_spec = ('-','-','--')
+colors = ('black', 'red', 'blue')
 
 def plot_exp(x,Y,ax,labels,xlab,ylab):
-
-    line_spec = ('-','-','--')
-    colors = ('black', 'red', 'blue')
-
-    for i in range(len(Y)):
-        ax.plot(x,Y[i], label=labels[i], linewidth=lw, linestyle=line_spec[i], color=colors[i], marker='o')
+    """ plot counterfactual policy simulations/experiments
     
+        Args:
+            x (1d array)
+            Y (list of 1d arrays)
+    """
+
+    # plot
+    for i in range(len(Y)):
+        ax.plot(x,Y[i], label=labels[i], linewidth=lw, linestyle=line_spec[i], color=colors[i], marker='o')    
+    
+    # details
     ax.set_xlabel(xlab, fontsize=fs)
     ax.set_ylabel(ylab, fontsize=fs)    
     ax.legend(fontsize=fs-5)
     ax.tick_params(axis='both', which='major', labelsize=fs)
 
-    return ax
-
 
 def policy(model,ax,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0,top=False):
-    """ plot either consumption or value functions for the single model
-    
-    Args:
-        model (class): parameters, solution and simulation
-        ax (axes): axes object for plotting
-        var (str): either 'c' for consumption or 'v' for value function
-        T (list): list of times
-        MA (list): list of male indicator
-        ST (list): list of states
-        D (list): list of choices
-        label (list, optional): list of what to show in label
-        xlim (list, optional): set x axis
-        ylim (list, optional): set y axis
-
-    Returns:
-        ax (axes): axes object for plotting
-    """
+    """ plot either consumption or value functions for the single model """
 
     # unpack
     sol = model.sol
@@ -59,7 +49,7 @@ def policy(model,ax,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0,to
                        ('v','v_t')])    
     m = sol.m
     if not top:
-        top = len(par.grid_a)
+        top = len(m)
     
     # loop through options
     ad = 0
@@ -71,7 +61,7 @@ def policy(model,ax,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0,to
 
                         if d == 1:
                             ra = transitions.ra_look_up(t,st,ra,d,par)
-                        x = m[t,ad,ma,st,ra,d,bottom:top]
+                        x = m[bottom:top]
                         y = getattr(sol,var)[t,ad,ma,st,ra,d,bottom:top]
                             
                         if label == False:
@@ -169,21 +159,8 @@ def policy_c(model,ax,var,T,AD,ST_h,ST_w,RA_h,RA_w,D_h,D_w,label=False,xlim=None
     ax.set_xlabel('$m_t$')
     ax.set_ylabel('${}$'.format(solvardict[var]))
 
-def choice_probs(model,ax,AD,MA,ST,ages=[57,68],xlim=None,ylim=None):
-    """ plot the average choice probabilities for multiple states
-    
-    Args:
-        model (class): parameters, solution and simulation
-        ax (axes): axes object for plotting
-        ages (list): list with start age and end age        
-        AD (int): age difference
-        MA (int): male indicator
-        ST (list): list of states
-        xlim (list, optional): set x axis
-        ylim (list, optional): set y axis
-
-    Returns:
-        ax (axes): axes object for plotting
+def choice_probs(model,ax,ma,ST=[0,1,2,3],ages=[57,67],xlim=None,ylim=None):
+    """ plot the average choice probabilities for singles across time and states
     """
 
     # unpack
@@ -203,7 +180,7 @@ def choice_probs(model,ax,AD,MA,ST,ages=[57,68],xlim=None,ylim=None):
                     
             # average choice probabilities
             ra = transitions.ra_look_up(t,st,0,1,par)
-            probs[j,t] = np.mean(funs.logsum2(v[t,AD,MA,st,ra],par)[1], axis=1)[0]
+            probs[j,t] = np.mean(funs.logsum2(v[t,0,ma,st,ra],par)[1], axis=1)[0]
 
         # plot
         if transitions.state_translate(st,'elig',par)==1:
@@ -214,41 +191,31 @@ def choice_probs(model,ax,AD,MA,ST,ages=[57,68],xlim=None,ylim=None):
             lab = lab + ', hs=1'
         else:
             lab = lab + ', hs=0'
-        ax.plot(ages,probs[j],'-o',label=lab)
+        ax.plot(ages+1,probs[j], linewidth=lw, marker='o', label=lab)   # +1 to recenter timeline        
 
     # details
     if xlim != None:
         ax.set_xlim(xlim)
     if ylim != None:
         ax.set_ylim(ylim)
-    ax.legend()
+    ax.legend(fontsize=fs-5)
     ax.grid(True)
-    ax.set_xlabel('age')
-    ax.set_ylabel('Retirement probability')
+    ax.set_xticks(ages+1)
+    ax.tick_params(axis='both', which='major', labelsize=fs)
+    ax.set_xlabel('age', fontsize=fs)
+    ax.set_ylabel('Retirement probability', fontsize=fs)
 
 
-def choice_probs_c(model,ax,ma,ST,ad=0,ages=[57,68],xlim=None,ylim=None):
-    """ plot the average choice probabilities for multiple states
-    
-    Args:
-        model (class): parameters, solution and simulation
-        ax (axes): axes object for plotting
-        ages (list): list with start age and end age        
-        AD (int): age difference
-        MA (int): male indicator
-        ST (list): list of states
-        xlim (list, optional): set x axis
-        ylim (list, optional): set y axis
-
-    Returns:
-        ax (axes): axes object for plotting
+def choice_probs_c(model,ax,ma,ST=[0,1,2,3],ad=0,ages=[57,67],xlim=None,ylim=None):
+    """ plot the average choice probabilities for couples across time and states for a given age difference.
+        Assuming the same state for both wife and husband
     """
 
     # unpack
     sol = model.sol
     par = model.par
     v = sol.v
-    ad_idx = ad + par.ad_min    # for look up in solution
+    ad_idx = ad+par.ad_min    # for look up in solution
 
     # initalize
     ages = np.arange(ages[0], ages[1]+1)
@@ -285,48 +252,34 @@ def choice_probs_c(model,ax,ma,ST,ad=0,ages=[57,68],xlim=None,ylim=None):
             lab = lab + ', hs=0'
 
         if ma == 0 and ad > 0:
-            ax.plot(ages+ad,probs[j],'-o',label=lab)    # if wife is older, then her age start at 57+ad           
-        else:
-            ax.plot(ages,probs[j],'-o',label=lab)
-
+            ax.plot(ages+ad+1,probs[j], linewidt=lw, marker='o', label=lab) # if wife is older, then her age start at 57+ad           
+        else:                                                               # +1 to recenter time line
+            ax.plot(ages+1,probs[j], linewidth=lw, marker='o', label=lab)
+   
     # details
     if xlim != None:
         ax.set_xlim(xlim)
     if ylim != None:
         ax.set_ylim(ylim)
-    ax.legend()
+    ax.legend(fontsize=fs-5)
     ax.grid(True)
-    ax.set_xlabel('age')
-    ax.set_ylabel('Retirement probability')
+    ax.set_xticks(ages+1)
+    ax.tick_params(axis='both', which='major', labelsize=fs)
+    ax.set_xlabel('age', fontsize=fs)
+    ax.set_ylabel('Retirement probability', fontsize=fs)
 
-
-def lifecycle(model,ax,vars=['m','c','a'],ma=0,ST=[0,1,2,3],ages=[57,68],quantiles=False,dots=False):
-    """ plot lifecycle
-    
-    Args:
-        model (class): parameters, solution and simulation
-        ax (axes): axes object for plotting
-        vars (list): con contain m, c, a, d and alive
-        ma (int): male indicator
-        ST (list): list of states
-        ages (list): list with start age and end age
-        quantiles (bool): if True (default) and only one element in vars then also plots lower and upper quartile
-
-    Returns:
-        ax (axes): axes object for plotting
-    """
+def lifecycle(model,ax,vars=['m','c','a'],MA=[0],ST=[0,1,2,3],ages=[57,68]):
+    """ plot lifecycle """
 
     # unpack
     sim = model.sim
     par = model.par
 
-    # mask
-    states = sim.states
-    MA = states[:,0]
-    States = states[:,1]
-    mask = np.nonzero(np.isin(States,ST))[0]
-    mask = mask[MA[mask]==ma]
-
+    # indices
+    MAx = sim.states[:,0]
+    STx = sim.states[:,1]
+    idx = np.nonzero((np.isin(MAx,MA) & np.isin(STx,ST)))[0]
+    
     # figure
     simvardict = dict([('m','$m_t$'),
                   ('c','$C_t$'),
@@ -337,18 +290,10 @@ def lifecycle(model,ax,vars=['m','c','a'],ma=0,ST=[0,1,2,3],ages=[57,68],quantil
     x = np.arange(ages[0], ages[1]+1)
     for i in vars:
         simdata = getattr(sim,i)[:,transitions.inv_age(x,par)]
-        y = simdata[mask,:]
+        y = simdata[idx,:]
         with warnings.catch_warnings(): # ignore this specific warning
             warnings.simplefilter("ignore", category=RuntimeWarning)
-
-            if dots:
-                ax.plot(x,np.nanmean(y,axis=0),'ko',lw=2,label=simvardict[i] + ' (Data)')
-            else:
-                ax.plot(x,np.nanmean(y,axis=0), 'r',lw=2,label=simvardict[i] + ' (Predicted)')                
-
-            if len(vars)==1 and quantiles:
-                ax.plot(x,np.nanpercentile(y,25,axis=1),'--',lw=1.5,label='lower quartile')
-                ax.plot(x,np.nanpercentile(y,75,axis=1),'--',lw=1.5,label='upper quartile')
+            ax.plot(x,np.nanmean(y,axis=0), 'r',lw=2,label=simvardict[i])                
     
     # details
     ax.legend()
@@ -406,7 +351,7 @@ def lifecycle_c(model,ax,vars=['m','c','a'],AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1
         ax.set_ylabel('100.000 DKR')
 
 def retirement_probs(model,ax,MA=[0],ST=[0,1,2,3],ages=[58,68],moments=False):
-    """ plot retirement probabilities for singles"""
+    """ plot retirement probabilities for singles """
 
     # unpack
     sim = model.sim
@@ -442,7 +387,7 @@ def retirement_probs(model,ax,MA=[0],ST=[0,1,2,3],ages=[58,68],moments=False):
     ax.set_ylabel('Retirement probability', fontsize=fs)
         
 
-def retirement_probs_c(model,ax,ma=0,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[57,68],plot=True,dots=False):
+def retirement_probs_c(model,ax,ma=0,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[58,68],plot=True,moments=False):
     """ plot retirement probabilities from couple model"""
 
     # unpack
@@ -461,19 +406,24 @@ def retirement_probs_c(model,ax,ma=0,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],S
     y = y[idx,:]                                               # states
 
     if plot:
-        if dots:
-            ax.plot(x,np.nanmean(y,axis=0),'ko',label='Data')
-        else:
-            ax.plot(x,np.nanmean(y,axis=0),'r',label='Predicted')
-        
+        ax.plot(x,np.nanmean(y,axis=0), 'r', linewidth=lw,label='Predicted')
+        if moments:
+            if ma == 0:
+                mom = np.load('probsW.npy')
+            elif ma == 1:
+                mom = np.load('probsH.npy')
+            ax.plot(mom[0][1:],mom[1][1:], 'ko', linewidth=lw, label='Data')
+
         # details
-        ax.grid(True)    
+        ax.grid(True)  
+        ax.legend(fontsize=fs)  
         ax.set_xticks(x)
+        ax.tick_params(axis='both', which='major', labelsize=fs)          
         ax.set_ylim(top=0.35)
-        ax.set_xlabel('Age')
-        ax.set_ylabel('Retirement probability')
+        ax.set_xlabel('Age', fontsize=fs)
+        ax.set_ylabel('Retirement probability', fontsize=fs)
     else:
-        return x,np.nanmean(y,axis=1)        
+        return x,np.nanmean(y,axis=0)        
 
 def policy_simulation(model,var='d',MA=[0,1],ST=[0,1,2,3],ages=[57,110]):
     """ policy simulation for singles"""
@@ -647,3 +597,16 @@ def plot_2DD(dict,x_ax,y_ax,xlim,ylim):
     ax.set_ylim([ylim[0],ylim[1]])
     ax.set_xlim([xlim[0],xlim[1]])
     ax.set(xlabel=x_ax, ylabel=y_ax)
+
+
+def sens_fig_tab(sens,sense,theta,est_par_tex,fixed_par_tex):
+    
+    fs = 17
+    sns.set(rc={'text.usetex' : False})
+    cmap = sns.diverging_palette(10, 220, sep=10, n=100)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    ax = sns.heatmap(sense,annot=True,fmt="2.2f",annot_kws={"size": fs},xticklabels=fixed_par_tex,yticklabels=est_par_tex,center=0,linewidth=.5,cmap=cmap)
+    plt.yticks(rotation=0) 
+    ax.tick_params(axis='both', which='major', labelsize=20)  

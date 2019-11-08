@@ -6,7 +6,7 @@ import time
 from prettytable import PrettyTable
 import matplotlib.pyplot as plt
 import seaborn as sns
-sns.set_style("whitegrid")
+import pickle
 
 # consav
 from consav import linear_interp
@@ -14,34 +14,17 @@ from consav import linear_interp
 # local modules
 import transitions
 
-
 def GaussHermite(n):
-    """ GaussHermite nodes and weights
-    
-    Args:
-        n (int): number of nodes
-
-    Returns:
-        (tuple): nodes and weights
-    """
+    """ GaussHermite nodes and weights """
     return np.polynomial.hermite.hermgauss(n)
 
-def GaussHermite_lognorm(var, n):
-    """ GaussHermite nodes and weights for lognormal shocks
-    
-    Args:
-        sigma (double): standard deviation of underlying normal distribution
-        n (int): number of nodes
-
-    Returns:
-        x,w (tuple): nodes and weights
-    """    
+def GaussHermite_lognorm(var,n):
+    """ GaussHermite nodes and weights for lognormal shocks """    
     
     x,w = GaussHermite(n)
     sigma = np.sqrt(var)
     x = np.exp(x*np.sqrt(2)*sigma - 0.5*var)
     w = w/np.sqrt(np.pi)
-
     assert(1 - sum(w*x) < 1e-8)
     return x,w 
 
@@ -141,8 +124,7 @@ def logsum4(V, par):
     cols = V.shape[1]
 
     # 2. maximum over the discrete choices
-    mxm = np.maximum(np.maximum(V[0,:],V[1,:]), np.maximum(V[2,:],V[3,:])).reshape(1,cols)
-    # mxm = np.maximum(np.maximum(V[0,:],V[1,:],V[2,:]),V[3,:]).reshape(1,cols)   # max 3 args in maximum        
+    mxm = np.maximum(np.maximum(V[0,:],V[1,:]), np.maximum(V[2,:],V[3,:])).reshape(1,cols)       
 
     # 3. logsum and probabilities
     if abs(sigma) > 1e-10:
@@ -239,21 +221,6 @@ def log_euler(model,MA=[0,1],ST=[0,1,2,3],ages=[57,68],plot=False):
         plt.plot(x,y)
     else:
         return total,x,y
-
-
-def create_iterator(lst,num):
-    indices = 0
-                 
-    if num == 3:
-        iterator = np.zeros((len(lst[0])*len(lst[1])*len(lst[2]),num),dtype=int)        
-        for x in lst[0]:
-            for y in range(len(lst[1])):
-                for z in range(len(lst[2])):
-                    iterator[indices] = (x,y,z)
-                    indices += 1
-    
-    return iterator
-
 
 def my_timer(funcs,argu,names,Ntimes=100,unit='ms',ndigits=2):
     """ times functions

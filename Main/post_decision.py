@@ -16,12 +16,12 @@ import egm
 ### Functions for singles #####
 ###############################
 @njit(parallel=True)
-def compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par,look_up=True):
+def compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par):
     """ compute post decision states v_plus_raw and q, which is used to solve the bellman equation for singles"""        
 
     # unpack solution
     c = sol_c[t+1]
-    m = sol_m[t+1]
+    m = sol_m[:]
     v = sol_v[t+1]
 
     # prep
@@ -32,38 +32,30 @@ def compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par,look_up=True):
     # loop over the choices
     for d in D:  
 
-        # a. choose to retire
+        # a. retire
         if d == 0:
+
+            # next period choice set and retirement age
+            d_plus = transitions.d_plus(t,d,par)
+            ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
+            
             # next period income
             w = np.array([1.0]) # no integration
-            inc = 0*w[:]                           
-            if look_up:
-                inc_no_shock = Ra + transitions.pension_look_up(t+1,ma,st,ra,par)
-            else:   # used for euler errors, where one cannot look up
-                inc_no_shock = Ra + transitions.pension(t+1,ma,st,ra,a,par)
-
-            # next period choice set and retirement age 
-            d_plus = transitions.d_plus(t,d,par)
-            ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)           
+            inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)                           
         
-        # b. choose to work
+        # b. work
         elif d == 1:
+            
             # next period choice set and retirement age 
             d_plus = transitions.d_plus(t,d,par)
             ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
 
             # next period income
-            inc_no_shock = Ra[:]
-            inc = transitions.labor_look_up(t+1,ma,st,par)  
-
-            # weights
-            if ma == 1:
-                w = par.xi_men_w
-            elif ma == 0:
-                w = par.xi_women_w                                             
+            w = par.xi_w[ma]
+            inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)  
 
         # c. integration            
-        v_plus_raw[d],avg_marg_u_plus[d] = shocks_GH(t,inc_no_shock,inc,w,c[ra_plus],m[ra_plus],v[ra_plus],par,d_plus)
+        v_plus_raw[d],avg_marg_u_plus[d] = shocks_GH(t,Ra,inc,w,c[ra_plus],m[:],v[ra_plus],par,d_plus)
     
     # return
     return v_plus_raw,avg_marg_u_plus
@@ -113,13 +105,14 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
 
                 # income
                 if look_up:
-                    pens_h = transitions.pension_look_up_c(t+1,1,ad,st_h,ra_h,par)  # husband
-                    pens_w = transitions.pension_look_up_c(t+1,0,ad,st_w,ra_w,par)  # wife
+                    pens_h = transitions.pension_look_up_c(d_h,d_w,t+1,ad,1,st_h,st_w,ra_h,ra_w,par)  # husband
+                    pens_w = transitions.pension_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)  # wife
                 else:
-                    pens_h = transitions.pension(t+1,1,st_h,ra_h,a,par)             # husband
-                    pens_w = transitions.pension(t+1+ad,0,st_w,ra_w,a,par)          # wife
+                    pass
+                    # pens_h = transitions.pension(t+1,1,st_h,ra_h,a,par)             # husband
+                    # pens_w = transitions.pension(t+1+ad,0,st_w,ra_w,a,par)          # wife
 
-                inc_no_shock = Ra[:] + pens_h[:] + pens_w[:]
+                inc_no_shock = Ra[:] + pens_h + pens_w
                 w = np.array([1.0]) # no integration
                 inc = 0*w[:]
 
@@ -132,12 +125,13 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
 
                 # income
                 if look_up:
-                    pens_h = transitions.pension_look_up_c(t+1,1,ad,st_h,ra_h,par)  # husband
+                    pens_h = transitions.pension_look_up_c(d_h,d_w,t+1,ad,1,st_h,st_w,ra_h,ra_w,par)    # husband
                 else:
-                    pens_h = transitions.pension(t+1,1,st_h,ra_h,a,par)             # husband                    
+                    pass
+                    # pens_h = transitions.pension(t+1,1,st_h,ra_h,a,par)             # husband                    
                 
-                inc_no_shock = Ra[:] + pens_h[:]
-                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,st_h,st_w,par) # wife
+                inc_no_shock = Ra[:] + pens_h
+                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)             # wife
                 w = par.xi_women_w            
 
             # c. husband working, wife retire
@@ -149,12 +143,13 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
     
                 # income
                 if look_up:
-                    pens_w = transitions.pension_look_up_c(t+1,0,ad,st_w,ra_w,par)  # wife
+                    pens_w = transitions.pension_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)    # wife
                 else:
-                    pens_w = transitions.pension(t+1+ad,0,st_w,ra_w,a,par)          # husband
+                    pass
+                    # pens_w = transitions.pension(t+1+ad,0,st_w,ra_w,a,par)          # husband
 
-                inc_no_shock = Ra[:] + pens_w[:]
-                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,st_h,st_w,par) # husband  
+                inc_no_shock = Ra[:] + pens_w
+                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,1,st_h,st_w,ra_h,ra_w,par)             # husband  
                 w = par.xi_men_w
 
             # d. both work
@@ -166,7 +161,7 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
 
                 # income 
                 inc_no_shock = Ra[:]                                            # no pension
-                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,st_h,st_w,par) # joint labor income
+                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)             # joint labor income
                 w = par.w_corr             
 
             # e. interpolate/integrate   
@@ -229,8 +224,8 @@ def shocks_GH(t,inc_no_shock,inc,w,c,m,v,par,d_plus):
 
         # 1. interpolate
         for d in d_plus:
-            linear_interp.interp_1d_vec_mon(prep,m[d,:],c[d,:],m_plus,c_plus_interp[d,:])
-            linear_interp.interp_1d_vec_mon_rep(prep,m[d,:],v[d,:],m_plus,v_plus_interp[d,:])         
+            linear_interp.interp_1d_vec_mon(prep,m[:],c[d,:],m_plus,c_plus_interp[d,:])
+            linear_interp.interp_1d_vec_mon_rep(prep,m[:],v[d,:],m_plus,v_plus_interp[d,:])         
 
         # 2. logsum and v_plus_raw
         if len(d_plus) == 1:     # no taste shocks
