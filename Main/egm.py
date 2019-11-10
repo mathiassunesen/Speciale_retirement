@@ -20,17 +20,17 @@ envelope_c = upperenvelope.create(utility.func_c)
 ### Functions for singles #####
 ###############################
 @njit(parallel=True)
-def solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par):
+def solve_bellman(t,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par):
     """ solve the bellman equation for singles"""    
 
     # compute post decision (and store results, since they are needed in couple model)
-    v_plus_raw,avg_marg_u_plus = post_decision.compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par)    
+    v_plus_raw,avg_marg_u_plus = post_decision.compute(t,ma,st,ra,D,sol_c,sol_m,sol_v,a,par)    
     sol_v_plus_raw[t+1,ra] = v_plus_raw
     sol_avg_marg_u_plus[t+1,ra] = avg_marg_u_plus    
     
     # unpack
     c = sol_c[t,ra]
-    m = sol_m
+    m = sol_m[:]
     v = sol_v[t,ra]        
     pi_plus = transitions.survival_lookup_single(t+1,ma,st,par)   
 
@@ -69,7 +69,7 @@ def solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
     ad_min = par.ad_min
     ad_idx = ad+ad_min
     c = sol_c[t,ad_idx,st_h,st_w,ra_h,ra_w]
-    m = sol_m[t,ad_idx,st_h,st_w,ra_h,ra_w]
+    m = sol_m[:]
     v = sol_v[t,ad_idx,st_h,st_w,ra_h,ra_w]
 
     # loop over the choices
@@ -84,7 +84,6 @@ def solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
             m_raw = a + c_raw
 
             # d. upper envelope
-            m[d] = a      
-            envelope_c(a,m_raw,c_raw,v_raw[d],m[d],     # input
+            envelope_c(a,m_raw,c_raw,v_raw[d],m,     # input
                        c[d],v[d],                       # output
                        d_h,d_w,st_h,st_w,par)           # args for utility function  

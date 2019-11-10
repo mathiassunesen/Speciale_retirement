@@ -11,6 +11,9 @@ import funs
 import transitions
 import post_decision
 
+##################################
+####      help functions     #####
+##################################
 @njit(parallel=True)
 def fill_arr(y_arr,idx,x_arr):
     """ fill out the array y with the array x at the indices idx"""    
@@ -23,8 +26,12 @@ def fill_number(y_arr,idx,x):
     for i in range(idx.size):
         y_arr[idx[i]] = x        
 
-@njit(parallel=True)
-def lifecycle(sim,sol,par,accuracy=False):
+##################################
+####         Singles         #####
+##################################
+#@njit(parallel=True)
+def lifecycle(sim,sol,par):
+    """ wrapper for simulating single model """
 
     # unpack
     euler = sim.euler
@@ -32,14 +39,15 @@ def lifecycle(sim,sol,par,accuracy=False):
     alive = sim.alive[:,:,0]
     probs = sim.probs[:,:,0]
     d = sim.d[:,:]
+    GovS = sim.GovS
 
     # states which are fixed (parallel outside loop)
     MA = sim.states[:,0]
     ST = sim.states[:,1]
     it = par.iterator
     for i in prange(len(it)):
-        ma = it[i,1]
-        st = it[i,2]
+        ma = it[i,0]
+        st = it[i,1]
         idx_st = np.nonzero((MA==ma) & (ST==st))[0]
         elig = transitions.state_translate(st,'elig',par)
 
@@ -54,37 +62,187 @@ def lifecycle(sim,sol,par,accuracy=False):
 
                 # simulate
                 simulate_single(t,ma,st,elig,ra,
-                                sim.c,sim.m,sim.a,d,probs,RA,
+                                sim.c,sim.m,sim.a,d,probs,RA,GovS,
                                 sol,par,sim,work,ret)
 
                 # euler errors
-                if accuracy and t < par.simT-1:
+                if sim.accuracy and t < par.simT-1:
                     euler_error(t,ma,st,ra,
                                 euler,sol,par,sim,
                                 work,ret)
             
-@njit(parallel=True)
+#@njit(parallel=True)
 def simulate_single(t,ma,st,elig,ra,        # states
-                    c,m,a,d,probs,RA,       # variables
+                    c,m,a,d,probs,RA,GovS,  # variables
                     sol,par,sim,work,ret,
                     ad=0,ad_min=0):         # classes and index
+    """ simulate single model """
 
-        # 1. working
-        if work.size > 0:
-            if t > 0:   # m is initialized in 1. period
-                update_m(t,ma,st,ra,1,m,sim,par,work)
-            c_interp,v_interp = ConsValue(t,ma,st,ra,1,m,sol,par,work,ad,ad_min)
-            optimal_choices(t,1,c,d,probs,c_interp,v_interp,sim,par,work,ad,ad_min)
-            update_ra(t,elig,RA,par,work)
-            fill_arr(a[:,t],work,m[work,t]-c[work,t])
+    # 1. working
+    if work.size > 0:
+        if t > 0:   # m is initialized in 1. period
+            update_m(t,ma,st,ra,1,m,a,sim,par,work,GovS)
+        c_interp,v_interp = ConsValue(t,ma,st,ra,1,m,sol,par,work,ad,ad_min)
+        optimal_choices(t,1,c,d,probs,c_interp,v_interp,sim,par,work,ad,ad_min)
+        update_ra(t,elig,RA,par,work)
+        fill_arr(a[:,t],work,m[work,t]-c[work,t])
 
-        # 2. retired
-        if ret.size > 0:
-            if t > 0:   # m is initialized in 1. period
-                update_m(t,ma,st,ra,0,m,sim,par,ret)
-            c_interp,v_interp = ConsValue(t,ma,st,ra,0,m,sol,par,ret,ad,ad_min)
-            optimal_choices(t,0,c,d,probs,c_interp,v_interp,sim,par,ret,ad,ad_min)
-            fill_arr(a[:,t],ret,m[ret,t]-c[ret,t])            
+    # 2. retired
+    if ret.size > 0:
+        if t > 0:   # m is initialized in 1. period
+            update_m(t,ma,st,ra,0,m,a,sim,par,ret,GovS)
+        c_interp,v_interp = ConsValue(t,ma,st,ra,0,m,sol,par,ret,ad,ad_min)
+        optimal_choices(t,0,c,d,probs,c_interp,v_interp,sim,par,ret,ad,ad_min)
+        fill_arr(a[:,t],ret,m[ret,t]-c[ret,t]) 
+
+@njit(parallel=True)
+def update_ra(t,elig,RA,par,idx):
+    """ update retirement status (ra) """
+
+    if elig == 1:   # only update if eligible to ERP
+        if t+1 >= par.T_two_year:
+            fill_number(RA[:],idx,0)
+        elif t+1 >= par.T_erp:
+            fill_number(RA[:],idx,1)               
+
+@njit(parallel=True)
+def update_m(t,ma,st,ra,ds,m,a,sim,par,idx,GovS):
+    """ update m for singles """
+
+    # unpack
+    a_idx = sim.a[idx,t-1]
+
+    # working
+    if ds == 1:
+        shocks = sim.shocks[idx,t,ma]
+        pre = transitions.labor_pretax(t,ma,st,par)*shocks
+        pre_oap = np.zeros(pre.shape)
+        # if t >= par.T_oap:
+        #     pre_oap = transitions.oap_pretax(t,par,i=0,y=pre)
+        inc = transitions.posttax(t,par,ds,inc=pre,pens=pre_oap)
+
+        # if t < par.T_oap:
+        #     pre_oap = np.zeros(pre.shape)
+        # else:
+        #     #pre_oap = transitions.oap_pretax(t,par,i=0,y=pre) 
+        #     pre_oap = np.zeros(pre.shape)   # we assume they can't get oap and work at the same time
+        # inc = transitions.posttax(t,par,ds,inc=pre,pens=pre_oap) 
+
+    # retired
+    elif ds == 0:
+        shocks = np.ones(len(idx))
+
+        # oap
+        if t >= par.T_oap:
+            pre = transitions.oap_pretax(t,par,i=0)[0]*shocks
+            inc = transitions.posttax(t,par,ds,inc=np.zeros(len(idx)),pens=pre)
+
+        # erp
+        elif par.T_erp <= t < par.T_oap:
+            pre = transitions.erp_pretax(t,ma,st,ra,par)[0]*shocks
+            inc = transitions.posttax(t,par,ds,inc=np.zeros(len(idx)),pens=pre)
+
+        else:
+            pre = np.zeros(len(idx))
+            inc = pre
+
+    # update m
+    fill_arr(m[:,t],idx,par.R*a_idx[:] + inc[:])
+
+    # government surplus
+    if sim.tax:
+        fill_arr(GovS[:,t],idx, ds*pre[:] - inc[:])     # working (ds=1): tax is pre-inc, 
+                                                        # retired (ds=0): tax is -inc                    
+
+@njit(parallel=True)
+def ConsValue(t,ma,st,ra,ds,    # states
+              m,                # variables
+              sol,par,idx,
+              ad=0,ad_min=0):   # classes and index
+    """ Interpolate consumption and value """
+
+    # a. unpack solution
+    ad_idx = ad+ad_min    
+    D = transitions.d_plus(t+ad_idx-1,ds,par)  # t-1 so we get choice set today
+    ra_look = transitions.ra_look_up(t+ad_idx,st,ra,ds,par)
+    c_sol = sol.c[t+ad_idx,ma,st,ra_look]
+    m_sol = sol.m[:]
+    v_sol = sol.v[t+ad_idx,ma,st,ra_look]    
+
+    # a. initialize interpolation
+    prep = linear_interp.interp_1d_prep(idx.size)
+    c_interp = np.zeros((idx.size,D.size)) # note c_interp and v_interp are transposed of each other
+    v_interp = np.zeros((D.size,idx.size))
+
+    # b. sort m (so interp is faster)
+    idx_unsort = np.argsort(np.argsort(m[idx,t])) # index to unsort 
+    m_sort = np.sort(m[idx,t])
+
+    # c. interpolate and sort back
+    if ds == 1:
+        for d in D:
+            linear_interp.interp_1d_vec_mon(prep,m_sol[:],c_sol[d],m_sort,c_interp[:,d])        
+            linear_interp.interp_1d_vec_mon(prep,m_sol[:],v_sol[d],m_sort,v_interp[d])         
+
+        # sort back
+        c_interp = c_interp[idx_unsort]
+        v_interp = v_interp[:,idx_unsort]
+
+    elif ds == 0:
+        for d in D:
+            linear_interp.interp_1d_vec_mon(prep,m_sol[:],c_sol[d],m_sort,c_interp[:,d])            
+
+        # sort back
+        c_interp = c_interp[idx_unsort]
+
+    # d. return
+    return c_interp,v_interp
+
+@njit(parallel=True)
+def optimal_choices(t,ds,               # states
+                    c,d,probs,          # variables
+                    c_interp,v_interp,  # interpolants
+                    sim,par,idx,
+                    ad=0,ad_min=0):     # classes and index
+    """ find optimal consumption and retirement choice"""
+
+    # unpack
+    choiceP = sim.choiceP[idx,t,0]
+    ad_idx = ad+ad_min
+
+    # working
+    if ds == 1:
+        
+        # a. retirement prob and optimal labor choice
+        prob = funs.logsum2(v_interp,par)[1][0] # probs are in 1 and retirement probs are in 0 
+        work_choice = (prob <= choiceP[:])
+        work_idx = idx[work_choice]
+        ret_idx = idx[~work_choice]
+
+        # b. optimal choices
+        if t+1 < par.Tr-1:
+            fill_arr(c[:,t],work_idx,c_interp[work_choice,1])
+            fill_arr(c[:,t],ret_idx,c_interp[~work_choice,0])            
+        else:
+            fill_arr(c[:,t],idx,c_interp[:,0])
+
+        if t+1 < par.simT:
+            if t+1 < par.Tr-1:
+                fill_number(d[:,t+1],work_idx,1)
+                fill_number(d[:,t+1],ret_idx,0)  
+                fill_arr(probs[:,t+1+ad_idx],idx,prob)
+            else:
+                fill_number(d[:,t+1],idx,0)
+                fill_number(probs[:,t+1+ad_idx],idx,1)
+    
+    # retired
+    elif ds == 0:
+
+        # a. optimal choices
+        fill_arr(c[:,t],idx,c_interp[:,0])
+        if t+1 < par.simT:
+            fill_number(d[:,t+1],idx,0)
+            fill_number(probs[:,t+1+ad_idx],idx,0)    
 
 @njit(parallel=True)
 def lifecycle_c(sim,sol,single_sol,par,single_par,accuracy=False,moments=True):
@@ -102,7 +260,7 @@ def lifecycle_c(sim,sol,single_sol,par,single_par,accuracy=False,moments=True):
 
     # states which are fixed (parallel outside loop)
     AD = sim.states[:,0]
-    ST_h = sim.states[:,1]  # this has to follow the solution.solve_c (a bit backwards here compaed to the rest in simulate)
+    ST_h = sim.states[:,1]  # this has to follow the solution.solve_c (a bit backwards here compared to the rest in simulate)
     ST_w = sim.states[:,2]  # and also has to follow the xlsx (couple_formue)
     it = par.iterator
     for i in prange(len(it)):
@@ -201,46 +359,6 @@ def simulate_couple(t,ad,st_h,st_w,elig_h,elig_w,ra_h,ra_w,                     
                         W_alive_work,W_alive_ret,
                         ad=ad,ad_min=par.ad_min)        
 
-@njit(parallel=True)
-def update_m(t,ma,st,ra,ds,m,sim,par,idx):
-
-    # unpack
-    a = sim.a[idx,t-1]
-
-    # working
-    if ds == 1:
-        shocks = sim.shocks[idx,t,ma]
-        pre = transitions.labor_pretax(t,ma,st,par)
-        inc = transitions.posttax(t,pre,par,labor=True,shock=shocks) 
-
-        # goverment surplus
-        if sim.tax:
-            fill_arr(GovS[:,t],idx,inc - pre)
-    
-    # retired
-    elif ds == 0:
-        shocks = np.ones(len(idx))
-        
-        # oap
-        if t >= par.T_oap:
-            pre = transitions.oap_pretax(t,par)
-            inc = transitions.posttax(t,pre,par,labor=False,shock=shocks)
-
-        # erp
-        elif par.T_erp <= t < par.T_oap:
-            pre = transitions.erp_pretax(t,ma,st,ra,par)
-            inc = transitions.posttax(t,pre,par,labor=False,shock=shocks)
-
-        else:
-            pre = 0.0
-            inc = pre*shocks
-
-        # goverment surplus
-        if sim.tax:
-            fill_arr(GovS[:,t],idx,-inc)    # income is goverment transfer (retired)            
-
-    # update m
-    fill_arr(m[:,t],idx,par.R*a[:] + inc[:])
 
 
 @njit(parallel=True)
@@ -276,48 +394,7 @@ def update_m_c(t,ad,st_h,st_w,ra_h,ra_w,d_h,d_w,
 
     fill_arr(m[:,t],idx,par.R*a[:] + inc[:])
 
-@njit(parallel=True)
-def ConsValue(t,ma,st,ra,ds,    # states
-              m,                # variables
-              sol,par,idx,
-              ad=0,ad_min=0):     # classes and index
 
-    # a. unpack solution
-    ad_idx = ad+ad_min    
-    D = transitions.d_plus(t+ad_idx-1,ds,par)  # t-1 so we get choice set today
-    ra_look = transitions.ra_look_up(t+ad_idx,st,ra,ds,par)
-    c_sol = sol.c[t+ad_idx,0,ma,st,ra_look]
-    m_sol = sol.m[:]
-    v_sol = sol.v[t+ad_idx,0,ma,st,ra_look]    
-
-    # a. initialize interpolation
-    prep = linear_interp.interp_1d_prep(idx.size)
-    c_interp = np.zeros((idx.size,D.size)) # note c_interp and v_interp are transposed of each other
-    v_interp = np.zeros((D.size,idx.size))
-
-    # b. sort m (so interp is faster)
-    idx_unsort = np.argsort(np.argsort(m[idx,t])) # index to unsort 
-    m_sort = np.sort(m[idx,t])
-
-    # c. interpolate and sort back
-    if ds == 1:
-        for d in D:
-            linear_interp.interp_1d_vec_mon(prep,m_sol[:],c_sol[d],m_sort,c_interp[:,d])        
-            linear_interp.interp_1d_vec_mon(prep,m_sol[:],v_sol[d],m_sort,v_interp[d])         
-
-        # sort back
-        c_interp = c_interp[idx_unsort]
-        v_interp = v_interp[:,idx_unsort]
-
-    elif ds == 0:
-        for d in D:
-            linear_interp.interp_1d_vec_mon(prep,m_sol[:],c_sol[d],m_sort,c_interp[:,d])            
-
-        # sort back
-        c_interp = c_interp[idx_unsort]
-
-    # d. return
-    return c_interp,v_interp
 
 
 @njit(parallel=True)
@@ -364,50 +441,7 @@ def ConsValue_c(t,ad,st_h,st_w,ra_h,ra_w,d_h,d_w,
     return c_interp,v_interp
 
 
-@njit(parallel=True)
-def optimal_choices(t,ds,               # states
-                    c,d,probs,          # variables
-                    c_interp,v_interp,  # interpolants
-                    sim,par,idx,
-                    ad=0,ad_min=0):     # classes and index
 
-    # unpack
-    choiceP = sim.choiceP[idx,t,0]
-    ad_idx = ad+ad_min
-
-    # working
-    if ds == 1:
-        
-        # a. retirement prob and optimal labor choice
-        prob = funs.logsum2(v_interp,par)[1][0] # probs are in 1 and retirement probs are in 0 
-        work_choice = (prob <= choiceP[:])
-        work_idx = idx[work_choice]
-        ret_idx = idx[~work_choice]
-
-        # b. optimal choices
-        if t+1 < par.Tr-1:
-            fill_arr(c[:,t],work_idx,c_interp[work_choice,1])
-            fill_arr(c[:,t],ret_idx,c_interp[~work_choice,0])            
-        else:
-            fill_arr(c[:,t],idx,c_interp[:,0])
-
-        if t+1 < par.simT:
-            if t+1 < par.Tr-1:
-                fill_number(d[:,t+1],work_idx,1)
-                fill_number(d[:,t+1],ret_idx,0)  
-                fill_arr(probs[:,t+1+ad_idx],idx,prob)
-            else:
-                fill_number(d[:,t+1],idx,0)
-                fill_number(probs[:,t+1+ad_idx],idx,1)
-    
-    # retired
-    elif ds == 0:
-
-        # a. optimal choices
-        fill_arr(c[:,t],idx,c_interp[:,0])
-        if t+1 < par.simT:
-            fill_number(d[:,t+1],idx,0)
-            fill_number(probs[:,t+1+ad_idx],idx,0)
 
 @njit(parallel=True)
 def optimal_choices_c(t,ad,dh_t,dw_t,               # states
@@ -522,14 +556,7 @@ def optimal_choices_c(t,ad,dh_t,dw_t,               # states
     fill_arr(c[:,t],idx[d2],c_interp[:,2])
     fill_arr(c[:,t],idx[d3],c_interp[:,3])
 
-@njit(parallel=True)
-def update_ra(t,elig,RA,par,idx):
 
-    if elig == 1:   # only update if eligible to ERP
-        if t+1 >= transitions.inv_age(par.two_year,par):
-            fill_number(RA[:],idx,0)
-        elif t+1 >= transitions.inv_age(par.erp_age,par):
-            fill_number(RA[:],idx,1)
 
 
 @njit(parallel=True)
@@ -538,8 +565,8 @@ def euler_error(t,ma,st,ra,euler,sol,par,sim,work,ret):
 
     # unpack
     sol_m = sol.m[:]
-    sol_c = sol.c[:,0,ma,st]
-    sol_v = sol.v[:,0,ma,st]
+    sol_c = sol.c[:,ma,st]
+    sol_v = sol.v[:,ma,st]
     c = sim.c[:,t]
     m = sim.m[:,t]
     a = sim.a[:,t]
@@ -559,7 +586,7 @@ def euler_error(t,ma,st,ra,euler,sol,par,sim,work,ret):
         a_sort = np.sort(a[ret_in])        
 
         # lhs and rhs
-        avg_marg_u_plus = post_decision.compute(t,0,ma,st,ra,D,sol_c,sol_m,sol_v,a_sort,par)[1]
+        avg_marg_u_plus = post_decision.compute(t,ma,st,ra,D,sol_c,sol_m,sol_v,a_sort,par)[1]
         lhs = utility.marg_func(c[ret_in],par)
         rhs = par.beta*(par.R*pi_plus*np.take(avg_marg_u_plus[0],idx_unsort) + (1-pi_plus)*par.gamma)
         fill_arr(euler[:,t], ret_in, lhs-rhs)
@@ -572,7 +599,7 @@ def euler_error(t,ma,st,ra,euler,sol,par,sim,work,ret):
         a_sort = np.sort(a[work_in])
 
         # lhs and rhs
-        avg_marg_u_plus = post_decision.compute(t,0,ma,st,ra,D,sol_c,sol_m,sol_v,a_sort,par)[1]
+        avg_marg_u_plus = post_decision.compute(t,ma,st,ra,D,sol_c,sol_m,sol_v,a_sort,par)[1]
         lhs = utility.marg_func(c[work_in],par)
         rhs = par.beta*(par.R*pi_plus*np.take(avg_marg_u_plus[1],idx_unsort) + (1-pi_plus)*par.gamma)
         fill_arr(euler[:,t], work_in, lhs-rhs)

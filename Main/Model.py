@@ -62,6 +62,10 @@ class RetirementClass(ModelClass):
         # d. if couple also create a single class
         if couple:
             single_kwargs['start_T'] = self.par.start_T - self.par.ad_min # add some extra time periods in the bottom        
+            single_kwargs['reg_labor_male'] = self.par.reg_labor_male
+            single_kwargs['reg_labor_female'] = self.par.reg_labor_female
+            single_kwargs['g_adjust'] = self.par.g_adjust
+            single_kwargs['priv_pension'] = self.par.priv_pension
             self.Single = RetirementClass(name=name+'_single',year=year,**single_kwargs)
     
     def pars(self,**kwargs):
@@ -105,18 +109,16 @@ class RetirementClass(ModelClass):
             self.par.Nxi_women = 8 
 
         # states
-        self.par.MA = np.array([0,1])            
-        self.par.ST = np.array(list(itertools.product([0, 1], repeat=2)))   # 2 dummy states = 4 combinations                   
         if self.couple:
             self.par.AD = np.array([-4,-3,-2,-1,0,1,2,3,4])
-        else:
-            self.par.AD = np.array([0])        
+        self.par.MA = np.array([0,1])            
+        self.par.ST = np.array(list(itertools.product([0, 1], repeat=2)))   # 2 dummy states = 4 combinations                   
 
         # preference parameters
         self.par.rho = 0.96                         # crra
         self.par.beta = 0.98                        # time preference
         self.par.alpha_0_male = 0.160               # constant, own leisure
-        self.par.alpha_0_female = 0.119             # constant, own leisure
+        self.par.alpha_0_female = 0.160             # constant, own leisure
         self.par.alpha_1 = 0.053                    # high skilled, own leisure
         self.par.gamma = 0.08                       # bequest motive
         if self.couple:
@@ -129,27 +131,35 @@ class RetirementClass(ModelClass):
         # uncertainty/variance parameters
         self.par.sigma_eta = 0.435                  # taste shock
         if self.couple:
-            pass
-            # self.par.cov_matrix([], [])
-            # self.par.var_men = 0.288                # income shock
-            # self.par.var_women = 0.347              # income shock
-            # self.par.cov = 0.011                    # covariance of income shocks
+            self.par.var = np.array([0.347, 0.288]) # income shocks (women first)
+            self.par.cov = 0.011                    # covariance of income shocks
         else:
             self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
 
         # initial estimations
-        self.par.reg_survival_male =        np.array((-10.338, 0.097, 1.0-0.04, 1.0+0.04))  # order is: cons, age, low_skilled, high_skilled
-        self.par.reg_survival_female =      np.array((-11.142, 0.103, 1.0-0.04, 1.0+0.04))  # order is: cons, age, low_skilled, high_skilled
+        self.par.pi_adjust =                0.4/100        
+        self.par.reg_survival_male =        np.array((-10.338, 0.097))          # order is: cons, age
+        self.par.reg_survival_female =      np.array((-11.142, 0.103))          # order is: cons, age
+
         if self.couple:
-            self.par.reg_labor_male =       np.array((-5.999, 0.262, 0.629, -0.532))
-            self.par.reg_labor_female =     np.array((-4.002, 0.318, 0.544, -0.453))            
-            self.par.pension_male =         np.array((1162305, 1960275))/self.par.denom
-            self.par.pension_female =       np.array((680399, 1787198))/self.par.denom           
+
+            # labor market income
+            self.par.reg_labor_male =       np.array((-5.999, 0.262, 0.629, -0.532))        # order is: cons, high_skilled, age, age2
+            self.par.reg_labor_female =     np.array((-4.002, 0.318, 0.544, -0.453))        # order is: cons, high_skilled, age, age2    
+
+            # private pension
+            self.par.g_adjust = 0.5
+            self.par.priv_pension =         np.array((728*1000, 1236*1000))/self.par.denom  # order is: female, male
+
         else:
+
+            # labor market income
             self.par.reg_labor_male =       np.array((-15.956, 0.230, 0.934, -0.770))       # order is: cons, high_skilled, age, age2
             self.par.reg_labor_female =     np.array((-18.937, 0.248, 1.036, -0.856))       # order is: cons, high_skilled, age, age2 
-            self.par.pension_male =         np.array((652582, 1234028))/self.par.denom      # order is: low_skilled, high_skilled
-            self.par.pension_female =       np.array((696822, 1431858))/self.par.denom      # order is: low_skilled, high_skilled
+            
+            # private pension
+            self.par.g_adjust = 0.5
+            self.par.priv_pension =         np.array((744*1000, 682*1000))/self.par.denom   # order is: female, male
 
         # tax and retirement system
         setup.TaxSystem(self)
@@ -163,16 +173,17 @@ class RetirementClass(ModelClass):
         setup.model_time(self.par)
         setup.grids(self.par)
 
-        # d. precompute and initialize simulation
-        transitions.precompute(self)
+        # d. precompute and initialize simulation (sensitive to the order)
+        transitions.precompute_survival(self.par)
         setup.init_sim(self)
+        transitions.precompute(self)
 
     def recompute(self):
         """ recompute precomputations if institutional variables have been changed """ 
         setup.model_time(self.par)
-        setup.grids(self.par)
-        transitions.precompute(self)
+        transitions.precompute_survival(self.par)
         setup.init_sim(self)
+        transitions.precompute(self)
 
     #########
     # solve #
@@ -181,14 +192,14 @@ class RetirementClass(ModelClass):
         """ allocate memory for solution """ 
 
         # prep
-        T = self.par.T
-        NAD = len(self.par.AD)          # number of age differences             
+        T = self.par.T          
         NST = len(self.par.ST)          # number of states
         Na = self.par.Na                # number of points in grid           
         NRA = 3                         # number of retirement status
 
         if self.couple:
-            ND = 4
+            NAD = len(self.par.AD)      # number of age differences               
+            ND = 4                      # number of choices
 
             # solution
             self.sol.c = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))   
@@ -196,22 +207,23 @@ class RetirementClass(ModelClass):
             self.sol.v = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA,ND,Na))        
 
         else:
-            NMA = len(self.par.MA)
-            ND = 2
+            NMA = len(self.par.MA)      # number of gender
+            ND = 2                      # number of choices
 
             # solution
-            self.sol.c = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))   
+            self.sol.c = np.nan*np.zeros((T,NMA,NST,NRA,ND,Na))   
             self.sol.m = self.par.grid_a    # common grid
-            self.sol.v = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))     
+            self.sol.v = np.nan*np.zeros((T,NMA,NST,NRA,ND,Na))     
 
             # post decision
-            self.sol.avg_marg_u_plus = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na))
-            self.sol.v_plus_raw = np.nan*np.zeros((T,NAD,NMA,NST,NRA,ND,Na)) 
+            self.sol.avg_marg_u_plus = np.nan*np.zeros((T,NMA,NST,NRA,ND,Na))
+            self.sol.v_plus_raw = np.nan*np.zeros((T,NMA,NST,NRA,ND,Na)) 
 
     def solve(self):
         """ solve the model """
 
         if self.couple:
+
             # allocate solution
             self.Single._solve_prep()
             self._solve_prep()
@@ -221,17 +233,17 @@ class RetirementClass(ModelClass):
             solution.solve_c(self.sol,self.Single.sol,self.par)
 
         else:
+
             # allocate solution
             self._solve_prep()
 
             # solve model
             solution.solve(self.sol,self.par)
         
-
     ############
     # simulate #
     ############
-    def _simulate_prep(self):
+    def _simulate_prep(self,accuracy,tax):
         """ allocate memory for simulation and draw random numbers """
 
         if self.couple:
@@ -256,44 +268,45 @@ class RetirementClass(ModelClass):
 
             # solution
             self.sim.c = np.nan*np.zeros((self.par.simN,self.par.simT))
-            self.sim.m = np.nan*np.zeros((self.par.simN,self.par.simT))
             self.sim.a = np.nan*np.zeros((self.par.simN,self.par.simT))
             self.sim.d = np.nan*np.zeros((self.par.simN,self.par.simT))
 
-            # dummies, probabilities and euler errors
+            # misc
             self.sim.probs = np.nan*np.zeros((self.par.simN,self.par.simT,1))  
             self.sim.RA = 2*np.ones((self.par.simN,1),dtype=int)
             self.sim.euler = np.nan*np.zeros((self.par.simN,self.par.simT-1))
+            self.sim.GovS = np.nan*np.zeros((self.par.simN,self.par.simT))
 
-            # initialize m and d
-            self.sim.m[:,0] = self.par.simM_init 
-             
-            self.sim.d[:,0] = 1                 
+            # booleans
+            self.sim.accuracy = accuracy
+            self.sim.tax = tax
 
-    def simulate(self,accuracy=False):
+            # initialize d
+            self.sim.d[:,0] = 1
+
+    def simulate(self,accuracy=False,tax=False):
         """ simulate model """
 
         if self.couple:
 
             # allocate memory
-            self._simulate_prep()
+            self._simulate_prep(accuracy,tax)
 
             # simulate model
-            simulate.lifecycle_c(self.sim,self.sol,self.Single.sol,self.par,self.Single.par,accuracy)
+            simulate.lifecycle_c(self.sim,self.sol,self.Single.sol,self.par,self.Single.par)
 
         else:
 
             # allocate memory
-            self._simulate_prep()
+            self._simulate_prep(accuracy,tax)
 
             # simulate model
-            simulate.lifecycle(self.sim,self.sol,self.par,accuracy)
-
+            simulate.lifecycle(self.sim,self.sol,self.par)
+    
 
 # test = RetirementClass()
+# test._simulate_prep(False,False)
 # test.solve()
-
-# Couple = RetirementClass(couple=True)
 
 # single_kwargs = {'Na':20}
 # data = RetirementClass(couple=True, single_kwargs=single_kwargs, Na=20)

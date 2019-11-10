@@ -59,12 +59,13 @@ def single_lists():
             ('var',double[:]), 
 
             # initial estimations
-            ('reg_labor_male',double[:]),
-            ('reg_labor_female',double[:]),
+            ('pi_adjust',double),
             ('reg_survival_male',double[:]),
             ('reg_survival_female',double[:]),
-            ('pension_male',double[:]),
-            ('pension_female',double[:]),   
+            ('reg_labor_male',double[:]),
+            ('reg_labor_female',double[:]),
+            ('g_adjust',double),
+            ('priv_pension',double[:]),
 
             # tax system
             ('IRA_tax',double),
@@ -87,10 +88,14 @@ def single_lists():
             ('oap_age',int32),
             ('two_year',int32),            
             ('erp_age',int32),
-            ('oap_B',double),
+            ('B',double),
+            ('y_B',double),
+            ('tau_B',double),
+            ('D_B',double),
+            ('D_s',double),            
             ('A_i',double[:]),
+            ('y_i',double[:]),
             ('tau_i',double[:]),
-            ('D_s',double),
             ('D_i',double[:]),
             ('ERP_low',double),
             ('ERP_high',double),
@@ -112,6 +117,8 @@ def single_lists():
             ('xi_w',double[:,:]),
 
             # precompute
+            ('pension_female',double[:]),
+            ('pension_male',double[:]),            
             ('survival',double[:,:,:]),
             ('oap',double[:]),
             ('labor',double[:,:,:,:]),
@@ -125,13 +132,13 @@ def single_lists():
     sollist = [ # (name, numba type), solution data
 
             # solution
-            ('c',double[:,:,:,:,:,:,:]),
+            ('c',double[:,:,:,:,:,:]),
             ('m',double[:]),
-            ('v',double[:,:,:,:,:,:,:]),      
+            ('v',double[:,:,:,:,:,:]),      
 
             # post decision
-            ('avg_marg_u_plus',double[:,:,:,:,:,:,:]), 
-            ('v_plus_raw',double[:,:,:,:,:,:,:])                      
+            ('avg_marg_u_plus',double[:,:,:,:,:,:]), 
+            ('v_plus_raw',double[:,:,:,:,:,:])                      
         ]     
 
     simlist = [ # (name, numba type), simulation data       
@@ -142,10 +149,15 @@ def single_lists():
             ('a',double[:,:]),
             ('d',double[:,:]),
 
-            # dummies, probabilities and euler errors
+            # misc
             ('probs',double[:,:,:]), 
             ('RA',int32[:,:]),
-            ('euler',double[:,:]),   
+            ('euler',double[:,:]),
+            ('GovS',double[:,:]),
+
+            # booleans
+            ('accuracy',boolean),
+            ('tax',boolean),   
 
             # setup
             ('choiceP',double[:,:,:]),
@@ -270,14 +282,23 @@ def RetirementSystem(model):
 
     if model.year == 2008:
 
+        # ages
         par.oap_age = 65
         par.two_year = 62
         par.erp_age = 60
-        par.oap_B = 61152/par.denom                             # base rate
-        par.A_i = np.array([61560, 28752, 28752])/par.denom     # Maximum OAP_A
-        par.tau_i = np.array([0.3, 0.3, 0.15])                  # marginal reduction in OAP_A
+        
+        # oap
+        par.B = 61152/par.denom                                 # base rate
+        par.y_B = 463500/par.denom                              # maximum annual income before loss of OAP_B
+        par.tau_B = 0.3                                         # marginal reduction in deduction regarding income
+        par.D_B = 259700/par.denom                              # deduction regarding base value of OAP
         par.D_s = 179400/par.denom                              # maximum deduction in spousal income
+        par.A_i = np.array([61560, 28752, 28752])/par.denom     # maximum OAP_A
+        par.y_i = np.array([153100, 210800, 306600])/par.denom  # maximum income before loss of OAP_A
+        par.tau_i = np.array([0.3, 0.3, 0.15])                  # marginal reduction in OAP_A
         par.D_i = np.array([57300, 115000, 115000])/par.denom   # maximum deduction regarding OAP_A
+        
+        # erp
         par.ERP_low = 12600/par.denom                           # deduction
         par.ERP_high = 166400/par.denom                         # maximum erp if two year rule is not satisfied
         par.ERP_2 = 182780/par.denom                            # erp with two year rule
@@ -293,16 +314,26 @@ def model_time(par):
     par.T_oap = transitions.inv_age(par.oap_age,par)
     par.T_erp = transitions.inv_age(par.erp_age,par)
     par.T_two_year = transitions.inv_age(par.two_year,par)
-    par.ad_min = abs(min(par.AD))
-    par.ad_max = max(par.AD)
     if par.couple:
-        par.iterator = create_iterator([par.AD,par.ST,par.ST],3) 
+        par.iterator = create_iterator([par.AD,par.ST,par.ST])
+        par.ad_min = abs(min(par.AD))
+        par.ad_max = max(par.AD)         
     else:
-        par.iterator = create_iterator([par.AD,par.MA,par.ST],3)       
+        par.iterator = create_iterator([par.MA,par.ST])       
+        par.ad_min = 0
+        par.ad_max = 0
 
-def create_iterator(lst,num):
+def create_iterator(lst):
     indices = 0
-                 
+    num = len(lst)
+
+    if num == 2:
+        iterator = np.zeros((len(lst[0])*len(lst[1]),num),dtype=int)        
+        for x in lst[0]:
+            for y in range(len(lst[1])):
+                iterator[indices] = (x,y)
+                indices += 1
+
     if num == 3:
         iterator = np.zeros((len(lst[0])*len(lst[1])*len(lst[2]),num),dtype=int)        
         for x in lst[0]:
@@ -326,8 +357,8 @@ def grids(par):
         par.xi[ma],par.xi_w[ma] = funs.GaussHermite_lognorm(par.var[ma],par.Nxi)
         
     # # c. correlated shocks for joint labor income (only for couples)
-    # if par.couple:                      
-    #     par.xi_men_corr,par.xi_women_corr,par.w_corr = funs.GH_lognorm_corr(par.var_men,par.var_women,par.cov,par.Nxi_men,par.Nxi_women)    
+    if par.couple:                      
+        par.xi_corr,par.w_corr = funs.GH_lognorm_corr(par.var,par.cov,par.Nxi_men,par.Nxi_women)    
 
 def init_sim(model):
     """ initialize simulation (wrapper) """
@@ -336,7 +367,7 @@ def init_sim(model):
     np.random.seed(model.par.sim_seed) 
 
     if model.couple:
-        pass
+        init_sim_couple(model)
 
     else:
         init_sim_single(model)
@@ -392,13 +423,15 @@ def init_sim_couple(model):
     sim.choiceP = np.random.rand(par.simN,par.simT,2)
     sim.deadP = np.random.rand(par.simN,par.simT,2)  
             
-    # random draws for labor income
-    par.inc_shock = np.nan*np.zeros((par.simN,par.Tr,2))
-    mu = -0.5*np.array([par.var_women, par.var_men])
-    cov = np.array(([par.var_women, par.cov], [par.cov, par.var_men]))
-    par.inc_shock[:,:,0] = np.exp(np.random.normal(mu[0],par.var_women,size=(par.simN,par.Tr)))
-    par.inc_shock[:,:,1] = np.exp(np.random.normal(mu[1],par.var_men,size=(par.simN,par.Tr)))
-    par.inc_shock_joint = np.exp(np.random.multivariate_normal(mu,cov,size=(par.simN,par.Tr)))        
+    # random draws for individual labor income
+    sim.shocks = np.nan*np.zeros((par.simN,par.Tr,2))
+    mu = -0.5*par.var
+    for ma in range(len(par.MA)):
+        sim.shocks[:,:,ma] = np.exp(np.random.normal(-0.5*par.var[ma], np.sqrt(par.var[ma]), size=(par.simN,par.Tr)))
+
+    # random draws for joint labor income
+    Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))
+    sim.shocks_joint = np.exp(np.random.multivariate_normal(mu,Cov,size=(par.simN,par.Tr)))     
 
     # precompute alive status
     sim.alive = np.ones((par.simN,par.simT,2),dtype=int)
@@ -407,18 +440,24 @@ def init_sim_couple(model):
     deadP_w = sim.deadP[:,:,0]
     deadP_h = sim.deadP[:,:,1]
     AD = sim.states[:,0]
+    ST_h = sim.states[:,1]
+    ST_w = sim.states[:,2]
+
+
     for t in range(par.simT):
         if t > 0:
             alive_w[alive_w[:,t-1] == 0, t] = 0
             alive_h[alive_h[:,t-1] == 0, t] = 0
 
         for ad in np.unique(AD):  
-            pi_h,pi_w = transitions.survival_look_up_c(t,ad,par) 
-            idx = np.nonzero(AD==ad)[0]                              
-            dead_w = idx[pi_w < deadP_w[idx,t]]
-            dead_h = idx[pi_h < deadP_h[idx,t]]
-            alive_w[dead_w,t] = 0
-            alive_h[dead_h,t] = 0
+            for st_h in np.unique(ST_h):
+                for st_w in np.unique(ST_w):
+                    pi_h,pi_w = transitions.survival_lookup_couple(t,ad,st_h,st_w,par) 
+                    idx = np.nonzero(AD==ad)[0]                              
+                    dead_w = idx[pi_w < deadP_w[idx,t]]
+                    dead_h = idx[pi_h < deadP_h[idx,t]]
+                    alive_w[dead_w,t] = 0
+                    alive_h[dead_h,t] = 0
 
 def state_and_m(par,sim,perc_num=10):
     """ create states and initial wealth (m_init) by loading in relevant information from SASdata"""
@@ -438,13 +477,13 @@ def state_and_m(par,sim,perc_num=10):
         
         # set states
         data = pd.read_excel('SASdata/single_formue.xlsx')
-        states = par.iterator[:,1:]
+        states = par.iterator
         n_groups = (data['Frac'].to_numpy()*par.simN).astype(int)
         n_groups[-1] = par.simN-np.sum(n_groups[:-1])   # to assure it sums to simN
         sim.states = np.transpose(np.vstack((np.repeat(states[:,0],n_groups),
                                              np.repeat(states[:,1],n_groups))))
         
-    # set m_init
+    # initial liquid wealth
     m_init = np.zeros(len(sim.states))
     idx = np.concatenate((np.zeros(1), np.cumsum(n_groups))).astype(int)
     percentiles = np.linspace(0,100,perc_num+1).astype(int)
@@ -452,6 +491,26 @@ def state_and_m(par,sim,perc_num=10):
     for i in range(n_groups.size):
         m_init[idx[i]:idx[i+1]] = pc_sample(n_groups[i], percentiles, bins[i])
     par.simM_init = m_init
+
+    # add private pension wealth to liquid wealth
+    adjust_pension(par,sim)
+
+    if par.couple:
+        pass
+
+    else:
+        sim.m = np.nan*np.zeros((par.simN,par.simT))        
+        sim.m[:,0] = m_init
+        states = sim.states
+        for ma in par.MA:
+            for st in range(len(par.ST)):
+                idx = np.nonzero((states[:,0]==ma) & (states[:,1]==st))[0]
+                hs = transitions.state_translate(st,'high_skilled',par)
+                    
+                if ma == 0:
+                    sim.m[idx,0] += (1-par.IRA_tax)*par.pension_female[hs]
+                elif ma == 1:
+                    sim.m[idx,0] += (1-par.IRA_tax)*par.pension_male[hs]
         
 def pc_sample(N,percentiles,bins):
     """ N samples from a dsitribution given its percentiles and bins (assumes equal spacing between percentiles)"""
@@ -460,3 +519,34 @@ def pc_sample(N,percentiles,bins):
     n = int(N/diff.size)
     draws = np.random.uniform(low=bins[:-1], high=bins[1:], size=(n,diff.size)).ravel()
     return np.concatenate((draws, np.random.uniform(low=bins[0], high=bins[-1], size=(N-n*diff.size)))) # to assure we return N samples                        
+
+def adjust_pension(par,sim):
+
+    # unpack 
+    states = sim.states
+    
+    # adjust pension
+    for ma in par.MA:
+
+        # indices
+        idx_low = np.nonzero((states[:,0]==ma) & (np.isin(states[:,1], (0,2))))[0]
+        idx_high = np.nonzero((states[:,0]==ma) & (np.isin(states[:,1], (1,3))))[0]            
+            
+        # adjust private pension
+        share = len(idx_high) / (len(idx_low) + len(idx_high))          # share of high skilled
+        pens_low = Xlow(par.g_adjust,share)*par.priv_pension[ma]
+        pens_high = Xhigh(par.g_adjust,share)*par.priv_pension[ma]
+        assert np.allclose(share*pens_high + (1-share)*pens_low, par.priv_pension[ma])
+
+        # store
+        if ma == 0:
+            par.pension_female = np.array((pens_low, pens_high))
+
+        elif ma == 1:
+            par.pension_male = np.array((pens_low, pens_high))
+    
+def Xlow(g,share):
+    return 1/(1+share*g)
+
+def Xhigh(g,share):
+    return (1+g)/(1+share*g)    

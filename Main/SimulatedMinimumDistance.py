@@ -23,11 +23,12 @@ class SimulatedMinimumDistance():
     
     '''    
 
-    def __init__(self,model,mom_data,mom_fun,bounds=None,name='baseline',method='nelder-mead',est_par=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
+    def __init__(self,model,mom_data,mom_fun,recompute=False,bounds=None,name='baseline',method='nelder-mead',est_par=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
         
         self.model = model
         self.mom_data = mom_data
         self.mom_fun = mom_fun
+        self.recompute = recompute
         self.name = name
 
         # estimation settings
@@ -57,6 +58,8 @@ class SimulatedMinimumDistance():
                 setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
 
         # 2. solve model with current parameters
+        if self.recompute:
+            self.model.recompute()
         self.model.solve()
 
         # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
@@ -162,7 +165,6 @@ class SimulatedMinimumDistance():
             mom_backward = - self.mom_sim
 
             grad[:,p] = (mom_forward - mom_backward)/(2.0*step_now[p])
-
 
         # 2. asymptotic standard errors [using Omega: V(mom_data_i). If bootstrapped, remember to multiply by Nobs]
         GW  = np.transpose(grad) @ W

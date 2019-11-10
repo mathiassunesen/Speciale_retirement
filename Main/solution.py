@@ -43,24 +43,23 @@ def solve(sol,par):
     """ wrapper for solving the single model"""
     it = par.iterator
     for j in prange(len(it)):
-        ad = it[j,0]
-        ma = it[j,1]
-        st = it[j,2]
+        ma = it[j,0]
+        st = it[j,1]
 
         # unpack solution
-        sol_c = sol.c[:,ad,ma,st]
+        sol_c = sol.c[:,ma,st]
         sol_m = sol.m
-        sol_v = sol.v[:,ad,ma,st]
-        sol_v_plus_raw = sol.v_plus_raw[:,ad,ma,st]
-        sol_avg_marg_u_plus = sol.avg_marg_u_plus[:,ad,ma,st]
+        sol_v = sol.v[:,ma,st]
+        sol_v_plus_raw = sol.v_plus_raw[:,ma,st]
+        sol_avg_marg_u_plus = sol.avg_marg_u_plus[:,ma,st]
         a = par.grid_a
                 
         # solve
-        solve_single_model(ad,ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)                
+        solve_single_model(ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)                
 
 
 @njit(parallel=True)
-def solve_single_model(ad,ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par):
+def solve_single_model(ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par):
 
     # prep
     elig = transitions.state_translate(st,'elig',par)
@@ -76,15 +75,15 @@ def solve_single_model(ad,ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_
                 ra = 2
 
             if t == par.T-1:    # last period
-                last_period.solve(t,ad,ma,st,ra,0,sol_c,sol_m,sol_v,par)
+                last_period.solve(t,ma,st,ra,0,sol_c,sol_m,sol_v,par)
                         
             elif t+1 >= par.Tr: # forced to retire
                 D = np.array([0])
-                egm.solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
+                egm.solve_bellman(t,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
 
             else:               # not forced to retire
                 D = np.array([0,1])
-                egm.solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
+                egm.solve_bellman(t,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
 
         # 2. Erp age and eligible: Solution depends of retirement age
         elif (t+1 >= par.T_erp-1 and elig == 1):
@@ -96,13 +95,13 @@ def solve_single_model(ad,ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_
                 elif ret[2][rs] == 0:
                     D = np.array([0]) 
 
-                egm.solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
+                egm.solve_bellman(t,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
 
         # 3. Pre Erp age or not eligible: Solution is independent of retirement age
         else:
             ra = 2
             D = np.array([0,1])
-            egm.solve_bellman(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
+            egm.solve_bellman(t,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
 
 
 def solve_c(sol,single_sol,par):
@@ -113,7 +112,7 @@ def solve_c(sol,single_sol,par):
         ad = it[j,0]
         st_h = it[j,1]
         st_w = it[j,2]
-
+        print(j)
         # solve
         solve_couple_model(ad,st_h,st_w,par,par.grid_a,
                            sol.c,sol.m,sol.v,

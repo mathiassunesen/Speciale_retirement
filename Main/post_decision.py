@@ -16,7 +16,7 @@ import egm
 ### Functions for singles #####
 ###############################
 @njit(parallel=True)
-def compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par):
+def compute(t,ma,st,ra,D,sol_c,sol_m,sol_v,a,par):
     """ compute post decision states v_plus_raw and q, which is used to solve the bellman equation for singles"""        
 
     # unpack solution
@@ -32,27 +32,40 @@ def compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par):
     # loop over the choices
     for d in D:  
 
-        # a. retire
+        # next period choice set and retirement age
+        d_plus = transitions.d_plus(t,d,par)
+        ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
+
+        # next period income
+        inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)    
+
+        # weights
         if d == 0:
-
-            # next period choice set and retirement age
-            d_plus = transitions.d_plus(t,d,par)
-            ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
-            
-            # next period income
-            w = np.array([1.0]) # no integration
-            inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)                           
-        
-        # b. work
+            w = np.array([1.0])     # no integration
         elif d == 1:
-            
-            # next period choice set and retirement age 
-            d_plus = transitions.d_plus(t,d,par)
-            ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
-
-            # next period income
             w = par.xi_w[ma]
-            inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)  
+
+        # # a. retire
+        # if d == 0:
+
+        #     # next period choice set and retirement age
+        #     d_plus = transitions.d_plus(t,d,par)
+        #     ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
+            
+        #     # next period income
+        #     w = np.array([1.0]) # no integration
+        #     inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)                           
+        
+        # # b. work
+        # elif d == 1:
+            
+        #     # next period choice set and retirement age 
+        #     d_plus = transitions.d_plus(t,d,par)
+        #     ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
+
+        #     # next period income
+        #     w = par.xi_w[ma]
+        #     inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)  
 
         # c. integration            
         v_plus_raw[d],avg_marg_u_plus[d] = shocks_GH(t,Ra,inc,w,c[ra_plus],m[:],v[ra_plus],par,d_plus)
@@ -67,109 +80,57 @@ def compute(t,ad,ma,st,ra,D,sol_c,sol_m,sol_v,a,par):
 @njit(parallel=True)
 def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
               sol_c,sol_m,sol_v,
-              single_sol_v_plus_raw,single_sol_avg_marg_u_plus,look_up=True):
+              single_sol_v_plus_raw,single_sol_avg_marg_u_plus):
     """ compute post decision for couples""" 
 
     # unpack solution
     ad_min = par.ad_min
     ad_idx = ad+ad_min
     c = sol_c[t+1,ad_idx,st_h,st_w]
-    m = sol_m[t+1,ad_idx,st_h,st_w]
+    m = sol_m[:]
     v = sol_v[t+1,ad_idx,st_h,st_w]  
 
     # unpack single solution
-    v_plus_raw_h = single_sol_v_plus_raw[t+1+ad_min,0,1,st_h,ra_h]                  # ad=0 and male=1
-    avg_marg_u_plus_h = single_sol_avg_marg_u_plus[t+1+ad_min,0,1,st_h,ra_h]        # ad=0 and male=1   
-    v_plus_raw_w = np.zeros(v_plus_raw_h.shape)                                     # initialize            
-    avg_marg_u_plus_w = np.zeros(avg_marg_u_plus_h.shape)                           # initialize   
+    v_plus_raw_h = single_sol_v_plus_raw[t+1+ad_min,1,st_h,ra_h]                  #  ma=1
+    avg_marg_u_plus_h = single_sol_avg_marg_u_plus[t+1+ad_min,1,st_h,ra_h]        #  ma=1   
+    v_plus_raw_w = np.zeros(v_plus_raw_h.shape)                                   # initialize            
+    avg_marg_u_plus_w = np.zeros(avg_marg_u_plus_h.shape)                         # initialize   
     if t+1+ad < par.T:    # wife alive   
-        v_plus_raw_w = single_sol_v_plus_raw[t+1+ad_idx,0,0,st_w,ra_w]              # ad=0 and male=1
-        avg_marg_u_plus_w = single_sol_avg_marg_u_plus[t+1+ad_idx,0,0,st_w,ra_w]    # ad=0 and male=1   
+        v_plus_raw_w = single_sol_v_plus_raw[t+1+ad_idx,0,st_w,ra_w]              # ma=0
+        avg_marg_u_plus_w = single_sol_avg_marg_u_plus[t+1+ad_idx,0,st_w,ra_w]    # ma=0   
 
     # prep
     v_raw = np.nan*np.zeros((4,len(a)))
     q = np.nan*np.zeros((4,len(a)))
     Ra = par.R*a    
-    pi_plus_h,pi_plus_w = transitions.survival_look_up_c(t+1,ad,par)        
+    pi_plus_h,pi_plus_w = transitions.survival_lookup_couple(t+1,ad,st_h,st_w,par)        
 
     # loop over the choices
     for d_h in D_h:
         for d_w in D_w:
 
-            # a. both retire
+            # next period choice set and retirement age
+            d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
+            ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)       # husband            
+            ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)    # wife
+
+            # next period income
+            inc = transitions.inc_lookup_couple(d_h,d_w,t+1,ad,st_h,st_w,ra_h,ra_w,par)  
+
+            # weights
             if d_h == 0 and d_w == 0:
-                # choice set tomorrow and retirement age
-                d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)       # husband            
-                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)    # wife
+                w = np.array([1.0])     # no integration
+            elif d_h == 0 and d_w == 0:
+                w = par.xi_w[0]         # wife
+            elif d_h == 1 and d_w == 0:
+                w = par.xi_w[1]         # husband
+            elif d_h == 1 and d_w == 1:
+                w = par.w_corr          # joint
 
-                # income
-                if look_up:
-                    pens_h = transitions.pension_look_up_c(d_h,d_w,t+1,ad,1,st_h,st_w,ra_h,ra_w,par)  # husband
-                    pens_w = transitions.pension_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)  # wife
-                else:
-                    pass
-                    # pens_h = transitions.pension(t+1,1,st_h,ra_h,a,par)             # husband
-                    # pens_w = transitions.pension(t+1+ad,0,st_w,ra_w,a,par)          # wife
-
-                inc_no_shock = Ra[:] + pens_h + pens_w
-                w = np.array([1.0]) # no integration
-                inc = 0*w[:]
-
-            # b. husband retire, wife working
-            elif d_h == 0 and d_w == 1:                  
-                # choice set tomorrow and retirement age
-                d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)       # husband            
-                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)    # wife            
-
-                # income
-                if look_up:
-                    pens_h = transitions.pension_look_up_c(d_h,d_w,t+1,ad,1,st_h,st_w,ra_h,ra_w,par)    # husband
-                else:
-                    pass
-                    # pens_h = transitions.pension(t+1,1,st_h,ra_h,a,par)             # husband                    
-                
-                inc_no_shock = Ra[:] + pens_h
-                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)             # wife
-                w = par.xi_women_w            
-
-            # c. husband working, wife retire
-            elif d_h == 1 and d_w == 0:                   
-                # choice set tomorrow and retirement age
-                d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,d_h,par)       # husband            
-                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,d_w,par)    # wife            
+            # interpolate/integrate   
+            v_plus_raw_c,avg_marg_u_plus_c = shocks_GH(t,Ra,inc,w,c[ra_plus_h,ra_plus_w],m[:],v[ra_plus_h,ra_plus_w],par,d_plus)
     
-                # income
-                if look_up:
-                    pens_w = transitions.pension_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)    # wife
-                else:
-                    pass
-                    # pens_w = transitions.pension(t+1+ad,0,st_w,ra_w,a,par)          # husband
-
-                inc_no_shock = Ra[:] + pens_w
-                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,1,st_h,st_w,ra_h,ra_w,par)             # husband  
-                w = par.xi_men_w
-
-            # d. both work
-            elif d_h == 1 and d_w == 1:                   
-                # choice set tomorrow and retirement age
-                d_plus = transitions.d_plus_c(t,ad,d_h,d_w,par)                 # joint index
-                ra_plus_h = transitions.ra_look_up(t+1,st_h,ra_h,1,par)         # husband            
-                ra_plus_w = transitions.ra_look_up(t+1+ad,st_w,ra_w,1,par)      # wife            
-
-                # income 
-                inc_no_shock = Ra[:]                                            # no pension
-                inc = transitions.labor_look_up_c(d_h,d_w,t+1,ad,0,st_h,st_w,ra_h,ra_w,par)             # joint labor income
-                w = par.w_corr             
-
-            # e. interpolate/integrate   
-            v_plus_raw_c,avg_marg_u_plus_c = shocks_GH(t,inc_no_shock,inc,w,
-                                                       c[ra_plus_h,ra_plus_w],m[ra_plus_h,ra_plus_w],v[ra_plus_h,ra_plus_w],
-                                                       par,d_plus)
-    
-            # f. indices to look up
+            # indices to look up
             d = transitions.d_c(d_h,d_w)                    # joint index     
             d_plus_h = transitions.d_plus_int(t,d_h,par)    # single, husband
             d_plus_w = transitions.d_plus_int(t+ad,d_w,par)    # single, wife
