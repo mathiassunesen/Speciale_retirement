@@ -50,7 +50,7 @@ def single_lists():
             ('rho',double), 
             ('beta',double),
             ('alpha_0_male',double), 
-            ('alpha_0_female',double),
+            ('alpha_0_female',double),          
             ('alpha_1',double),
             ('gamma',double),            
 
@@ -59,7 +59,8 @@ def single_lists():
             ('var',double[:]), 
 
             # initial estimations
-            ('pi_adjust',double),
+            ('pi_adjust_f',double),
+            ('pi_adjust_m',double),
             ('reg_survival_male',double[:]),
             ('reg_survival_female',double[:]),
             ('reg_labor_male',double[:]),
@@ -150,8 +151,8 @@ def single_lists():
             ('d',double[:,:]),
 
             # misc
-            ('probs',double[:,:,:]), 
-            ('RA',int32[:,:]),
+            ('probs',double[:,:]), 
+            ('RA',int32[:]),
             ('euler',double[:,:]),
             ('GovS',double[:,:]),
 
@@ -161,9 +162,9 @@ def single_lists():
 
             # setup
             ('choiceP',double[:,:,:]),
-            ('deadP',double[:,:,:]),
-            ('shocks',double[:,:,:]),
-            ('alive',int32[:,:,:]),      
+            ('alive',int32[:,:]),      
+            ('labor_pre',double[:,:,:]),
+            ('labor_post',double[:,:,:]),
             ('states',int32[:,:])
 
         ]
@@ -177,15 +178,6 @@ def couple_lists():
 
     parlist = [ # (name,numba type), parameters, grids etc.
 
-            # states     
-            ('labor_ind',double[:,:,:,:,:,:,:,:]),
-            ('labor_joint',double[:,:,:,:,:,:]),
-            ('pension_ind',double[:,:,:,:,:,:,:]),
-            ('pension_joint',double[:,:,:,:,:,:]),
-               
-            # simulation
-            ('inc_shock_joint',double[:,:,:]),
-
             # preference parameters
             ('pareto_w',double),
             ('v',double),            
@@ -193,15 +185,20 @@ def couple_lists():
             ('phi_0_female',double),
             ('phi_1',double),
 
-            # grids         
-            ('Nxi_men',int32),
-            ('Nxi_women',int32),                         
-                
             # uncertainty/variance parameters
             ('cov',double),
-            ('xi_men_corr',double[:]),
-            ('xi_women_corr',double[:]),            
-            ('w_corr',double[:])         
+
+            # grids         
+            ('Nxi_men',int32),
+            ('Nxi_women',int32),  
+            ('xi_corr',double[:,:]),
+            ('w_corr',double[:]),            
+
+            # precompute
+            ('inc_pens',double[:,:,:,:,:,:]),
+            ('inc_mixed',double[:,:,:,:,:,:,:,:,:]),
+            ('inc_joint',double[:,:,:,:,:,]),                                 
+
         ]
 
     parlist = parlist + single_par   
@@ -209,13 +206,10 @@ def couple_lists():
     sollist = [ # (name, numba type), solution data
 
             # solution
-            ('c',double[:,:,:,:,:,:,:,:]),  # 8d
-            ('m',double[:,:,:,:,:,:,:,:]),
+            ('c',double[:,:,:,:,:,:,:,:]),
+            ('m',double[:]),
             ('v',double[:,:,:,:,:,:,:,:]),                     
-
-            # interpolation
-            ('c_plus_interp',double[:,:]),  # 2d
-            ('v_plus_interp',double[:,:])                        
+                
         ]     
 
     simlist = [ # (name, numba type), simulation data       
@@ -226,23 +220,25 @@ def couple_lists():
             ('a',double[:,:]),
             ('d',double[:,:,:]),
 
-            # states
-            ('states',int32[:,:]),
-
-            # moments
-            ('moments',double[:,:,:]),
-
-            # dummies and probabilities
-            ('alive',int32[:,:,:]), 
+            # misc
             ('probs',double[:,:,:]), 
             ('RA',int32[:,:]),
+            ('euler',double[:,:]),
+            ('GovS',double[:,:]),
 
-            # euler errors                      
-            ('euler',double[:,:]),          
+            # booleans
+            ('accuracy',boolean),
+            ('tax',boolean),   
 
-            # random shocks
-            ('choiceP',double[:,:,:]),
-            ('deadP',double[:,:,:]),
+            # setup
+            ('choiceP',double[:,:,:]), 
+            ('alive',int32[:,:,:]),      
+            ('labor_pre',double[:,:,:]),
+            ('labor_post',double[:,:,:]),
+            ('labor_pre_joint',double[:,:]),
+            ('labor_post_joint',double[:,:]),
+            ('states',int32[:,:])
+
         ]                 
 
     return parlist,sollist,simlist
@@ -368,7 +364,6 @@ def init_sim(model):
 
     if model.couple:
         init_sim_couple(model)
-
     else:
         init_sim_single(model)
 
@@ -384,31 +379,42 @@ def init_sim_single(model):
 
     # random draws       
     sim.choiceP = np.random.rand(par.simN,par.simT,1)                            
-    sim.deadP = np.random.rand(par.simN,par.simT,1) 
-    sim.shocks = np.nan*np.zeros((par.simN,par.Tr,2))
-    for ma in range(len(par.MA)):
-        sim.shocks[:,:,ma] = np.exp(np.random.normal(-0.5*par.var[ma], np.sqrt(par.var[ma]), size=(par.simN,par.Tr)))
+    deadP = np.random.rand(par.simN,par.simT) 
 
     # precompute
     MA = sim.states[:,0]
     MAx = np.unique(MA)
     ST = sim.states[:,1]
     STx = np.unique(ST)
-             
-    # alive status
-    sim.alive = np.ones((par.simN,par.simT,1),dtype=int)
-    alive = sim.alive[:,:,0]
-    deadP = sim.deadP[:,:,0]
+    sim.alive = np.ones((par.simN,par.simT),dtype=int)
+    alive = sim.alive
+    sim.labor_pre = np.nan*np.zeros((par.simN,min(par.simT,par.Tr),2))
+    sim.labor_post = np.nan*np.zeros((par.simN,min(par.simT,par.Tr),2))    
     for t in range(par.simT):
+
+        # if they are dead, they stay dead
         if t > 0:
             alive[alive[:,t-1] == 0,t] = 0
 
         for ma in MAx:
             for st in STx:
-                pi = transitions.survival_lookup_single(t,ma,st,par)
+
+                # indices
                 idx = np.nonzero((MA==ma) & (ST==st))[0]
-                dead = idx[pi < deadP[idx,t]]
-                alive[dead,t] = 0
+
+                # alive status (they are all alive first period)
+                if t > 0:
+
+                    # alive status
+                    pi = transitions.survival_lookup_single(t,ma,st,par)
+                    dead = idx[pi < deadP[idx,t]]
+                    alive[dead,t] = 0
+
+                # labor income
+                if t < par.Tr:
+                    shocks = np.exp(np.random.normal(-0.5*par.var[ma], np.sqrt(par.var[ma]), size=len(idx)))
+                    sim.labor_pre[idx,t,ma] = transitions.labor_pretax(t,ma,st,par)*shocks
+                    sim.labor_post[idx,t,ma] = transitions.posttax(t,par,d=1,inc=sim.labor_pre[idx,t,ma],pens=np.zeros(len(idx)),spouse_inc=np.zeros(len(idx)))
 
 def init_sim_couple(model):
 
@@ -420,44 +426,100 @@ def init_sim_couple(model):
     state_and_m(par,sim,perc_num=10)
 
     # random draws for simulation
-    sim.choiceP = np.random.rand(par.simN,par.simT,2)
-    sim.deadP = np.random.rand(par.simN,par.simT,2)  
+    ad_min = par.ad_min
+    ad_max = par.ad_max
+    extend = ad_min + ad_max    
+    sim.choiceP = np.random.rand(par.simN,par.simT+extend,2)
+    deadP = np.random.rand(par.simN,par.simT+extend,2)  
             
-    # random draws for individual labor income
-    sim.shocks = np.nan*np.zeros((par.simN,par.Tr,2))
-    mu = -0.5*par.var
-    for ma in range(len(par.MA)):
-        sim.shocks[:,:,ma] = np.exp(np.random.normal(-0.5*par.var[ma], np.sqrt(par.var[ma]), size=(par.simN,par.Tr)))
-
-    # random draws for joint labor income
-    Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))
-    sim.shocks_joint = np.exp(np.random.multivariate_normal(mu,Cov,size=(par.simN,par.Tr)))     
-
-    # precompute alive status
-    sim.alive = np.ones((par.simN,par.simT,2),dtype=int)
-    alive_w = sim.alive[:,:,0]
-    alive_h = sim.alive[:,:,1]
-    deadP_w = sim.deadP[:,:,0]
-    deadP_h = sim.deadP[:,:,1]
+    # precompute
     AD = sim.states[:,0]
     ST_h = sim.states[:,1]
     ST_w = sim.states[:,2]
 
-
+    # 1. alive status
+    sim.alive = np.ones((par.simN,par.simT+extend,2),dtype=int)
+    alive_w = sim.alive[:,:,0]
+    alive_h = sim.alive[:,:,1]
+    alive_h[:,-ad_max:] = 0 # last period for men, which we never reach
+    deadP_w = deadP[:,:,0]
+    deadP_h = deadP[:,:,1]
     for t in range(par.simT):
-        if t > 0:
-            alive_w[alive_w[:,t-1] == 0, t] = 0
-            alive_h[alive_h[:,t-1] == 0, t] = 0
-
         for ad in np.unique(AD):  
             for st_h in np.unique(ST_h):
                 for st_w in np.unique(ST_w):
-                    pi_h,pi_w = transitions.survival_lookup_couple(t,ad,st_h,st_w,par) 
-                    idx = np.nonzero(AD==ad)[0]                              
-                    dead_w = idx[pi_w < deadP_w[idx,t]]
-                    dead_h = idx[pi_h < deadP_h[idx,t]]
-                    alive_w[dead_w,t] = 0
-                    alive_h[dead_h,t] = 0
+
+                    tw_idx = t+ad+par.ad_min
+                    th_idx = t+par.ad_min
+
+                    if t > 0:
+                        alive_w[alive_w[:,tw_idx-1] == 0, tw_idx] = 0
+                        alive_h[alive_h[:,th_idx-1] == 0, th_idx] = 0
+
+                        pi_h,pi_w = transitions.survival_lookup_couple(t,ad,st_h,st_w,par) 
+                        idx = np.nonzero(AD==ad)[0]                              
+                        dead_w = idx[pi_w < deadP_w[idx,tw_idx]]
+                        dead_h = idx[pi_h < deadP_h[idx,th_idx]]
+                        alive_w[dead_w,tw_idx] = 0
+                        alive_h[dead_h,th_idx] = 0
+
+    # 2. labor income
+    Tr = min(par.simT,par.Tr)
+    sim.labor_pre = np.nan*np.zeros((par.simN,Tr+extend,2))
+    sim.labor_post = np.nan*np.zeros((par.simN,Tr+extend,2))
+    sim.labor_pre_joint = np.nan*np.zeros((par.simN,Tr))
+    sim.labor_post_joint = np.nan*np.zeros((par.simN,Tr))  
+    mu = -0.5*par.var      
+    Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))        
+
+    # 2.a individual labor income (post tax can be used for singles, only pre tax can be used for couples, since we don't know pension of spouse) 
+    for t in range(min(par.simT,par.Tr+ad_min)):
+        for ad in np.unique(AD):
+
+            t_h = t
+            t_w = t+ad
+            th_idx = t+ad_min
+            tw_idx = t+ad+ad_min
+
+            # husband
+            for st_h in np.unique(ST_h):
+                if t < par.Tr:      # not forced to retire
+                    idx_h = np.nonzero((alive_h[:,th_idx]==1) & (ST_h==st_h))[0]
+                    shocks_h = np.exp(np.random.normal(mu[1], np.sqrt(par.var[1]), size=len(idx_h)))
+                    sim.labor_pre[idx_h,th_idx,1] = transitions.labor_pretax(t_h,1,st_h,par)*shocks_h
+                    sim.labor_post[idx_h,th_idx,1] = transitions.posttax(t_h,par,d=1,inc=sim.labor_pre[idx_h,th_idx,1],pens=np.zeros(len(idx_h)),spouse_inc=np.inf*np.ones(len(idx_h)))
+
+            # wife
+            for st_w in np.unique(ST_w):
+                if t+ad < par.Tr:   # not forced to retire
+                    idx_w = np.nonzero((alive_w[:,tw_idx]==1) & (ST_w==st_w))[0]
+                    shocks_w = np.exp(np.random.normal(mu[0], np.sqrt(par.var[0]), size=len(idx_w)))
+                    sim.labor_pre[idx_w,tw_idx,0] = transitions.labor_pretax(t_w,0,st_w,par)*shocks_w
+                    sim.labor_post[idx_w,tw_idx,0] = transitions.posttax(t_w,par,d=1,inc=sim.labor_pre[idx_w,tw_idx,0],pens=np.zeros(len(idx_w)),spouse_inc=np.inf*np.ones(len(idx_w)))
+
+    # 2.b joint labor income (if they both work)
+    for t in range(Tr):
+        for ad in np.unique(AD):
+            for st_h in np.unique(ST_h):
+                for st_w in np.unique(ST_w):
+
+                    if t < par.Tr and t+ad < par.Tr:
+                        
+                        # indices
+                        th_idx = t+ad_min
+                        tw_idx = t+ad+ad_min                        
+                        idx = np.nonzero((alive_h[:,th_idx]==1) & (alive_w[:,tw_idx]==1) & (AD==ad) & (ST_h==st_h) & (ST_w==st_w))[0]
+                        
+                        # pre tax
+                        shocks = np.exp(np.random.multivariate_normal(mu,Cov,size=len(idx)))
+                        pre_h = transitions.labor_pretax(t,1,st_h,par)*shocks[:,1]
+                        pre_w = transitions.labor_pretax(t+ad,0,st_w,par)*shocks[:,0]
+                        sim.labor_pre_joint[idx,t] = pre_h + pre_w
+                        
+                        # post tax
+                        post_h = transitions.posttax(t,par,d=1,inc=pre_h,pens=np.zeros(len(idx)),spouse_inc=pre_w)
+                        post_w = transitions.posttax(t+ad,par,d=1,inc=pre_w,pens=np.zeros(len(idx)),spouse_inc=pre_h)
+                        sim.labor_post_joint[idx,t] = post_h + post_w                    
 
 def state_and_m(par,sim,perc_num=10):
     """ create states and initial wealth (m_init) by loading in relevant information from SASdata"""
@@ -494,19 +556,23 @@ def state_and_m(par,sim,perc_num=10):
 
     # add private pension wealth to liquid wealth
     adjust_pension(par,sim)
+    sim.m = np.nan*np.zeros((par.simN,par.simT))
+    sim.m[:,0] = m_init
+    states = sim.states
 
     if par.couple:
-        pass
+        for st_h in range(len(par.ST)):
+            for st_w in range(len(par.ST)):
+                idx = np.nonzero((states[:,1]==st_h) & (states[:,2]==st_w))[0]
+                hs_h = transitions.state_translate(st_h,'high_skilled',par)
+                hs_w = transitions.state_translate(st_w,'high_skilled',par)
+                sim.m[idx,0] += (1-par.IRA_tax)*(par.pension_male[hs_h] + par.pension_female[hs_w])
 
     else:
-        sim.m = np.nan*np.zeros((par.simN,par.simT))        
-        sim.m[:,0] = m_init
-        states = sim.states
         for ma in par.MA:
             for st in range(len(par.ST)):
                 idx = np.nonzero((states[:,0]==ma) & (states[:,1]==st))[0]
                 hs = transitions.state_translate(st,'high_skilled',par)
-                    
                 if ma == 0:
                     sim.m[idx,0] += (1-par.IRA_tax)*par.pension_female[hs]
                 elif ma == 1:

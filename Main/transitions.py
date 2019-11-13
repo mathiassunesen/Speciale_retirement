@@ -279,16 +279,7 @@ def precompute_inc_single(par):
                 if t-ad_min < par.Tr:
                     pre = labor_pretax(t-ad_min,ma,st,par)*xi[ma]
                     pre_oap = np.zeros(pre.shape)
-                    # if t >= par.T_oap:
-                    #     pre_oap = oap_pretax(t-ad_min,par,i=0,y=pre)
                     par.labor[t,ma,st] = posttax(t-ad_min,par,d=1,inc=pre,pens=pre_oap)
-
-                    # if t-ad_min < par.T_oap:
-                    #     pre_oap = np.zeros(pre.shape)
-                    # else:
-                    #     #pre_oap = oap_pretax(t-ad_min,par,i=0,y=pre)
-                    #     pre_oap = np.zeros(pre.shape)   # we assume that they can't get oap and work at the same time
-                    # par.labor[t,ma,st] = posttax(t-ad_min,par,d=1,inc=pre,pens=pre_oap)
 
                 # erp
                 if par.T_erp <= t-ad_min < par.T_oap:
@@ -316,7 +307,7 @@ def precompute_inc_couple(par):
     ad_min = par.ad_min
     ad_max = par.ad_max    
     extend = ad_min+ad_max
-    T = par.T+extend                    # total time
+    T = par.T+extend                   
     Tr = par.Tr+extend
 
     # initialize
@@ -336,8 +327,8 @@ def precompute_inc_couple(par):
 
                                     # ages
                                     ad = par.AD[adx]
-                                    t_h = t# + ad_min
-                                    t_w = t + ad# + ad_min
+                                    t_h = t
+                                    t_w = t+ad
 
                                     # both retired
                                     if d_h == 0 and d_w == 0:
@@ -376,19 +367,17 @@ def precompute_inc_couple(par):
                                         if t_h < par.Tr:
                                             pre_h = labor_pretax(t_h,1,st_h,par)*xi[1]
                                             oap_h = np.zeros(pre_h.shape)
-                                            # if t_h >= par.T_oap:
-                                            #     oap_h = oap_pretax(t_h,par,i=2,y=pre_h)
 
                                             # wife
                                             pre_w = np.zeros(pre_h.shape)
                                             if t_w >= par.T_oap:
-                                                pre_w = oap_pretax(t_w,par,i=1,y=pre_w,y_spouse=pre_h)
+                                                pre_w[:] = oap_pretax(t_w,par,i=1,y=pre_w,y_spouse=pre_h)
                                             elif par.T_erp <= t_w < par.T_oap:
-                                                pre_w = erp_pretax(t_w,0,st_w,ra_w,par)
+                                                pre_w[:] = erp_pretax(t_w,0,st_w,ra_w,par)
 
                                             # tax
                                             post_h = posttax(t_h,par,d_h,inc=pre_h,pens=oap_h,spouse_inc=pre_w)
-                                            post_w = posttax(t_w,par,d_w,pens=pre_w,spouse_inc=pre_h+oap_h)
+                                            post_w = posttax(t_w,par,d_w,inc=np.zeros(pre_w.shape),pens=pre_w,spouse_inc=pre_h+oap_h)
                                             par.inc_mixed[t,adx,st_h,st_w,ra_h,ra_w,d_h,d_w] = post_h + post_w
 
                                     # wife working
@@ -398,19 +387,17 @@ def precompute_inc_couple(par):
                                         if t_w < par.Tr:
                                             pre_w = labor_pretax(t_w,0,st_w,par)*xi[0]
                                             oap_w = np.zeros(pre_w.shape)
-                                            # if t_w >= par.T_oap:
-                                            #     oap_w = oap_pretax(t_w,par,i=2,y=pre_w)
 
                                             # husband
                                             pre_h = np.zeros(pre_w.shape)
                                             if t_h >= par.T_oap:
-                                                pre_h = oap_pretax(t_h,par,i=1,y=pre_h,y_spouse=pre_w)
+                                                pre_h[:] = oap_pretax(t_h,par,i=1,y=pre_h,y_spouse=pre_w)
                                             elif par.T_erp <= t_h < par.T_oap:
-                                                pre_h = erp_pretax(t_h,1,st_h,ra_h,par)
+                                                pre_h[:] = erp_pretax(t_h,1,st_h,ra_h,par)
 
                                             # tax
                                             post_w = posttax(t_w,par,d_w,inc=pre_w,pens=oap_w,spouse_inc=pre_h)
-                                            post_h = posttax(t_h,par,d_h,pens=pre_h,spouse_inc=pre_w+oap_w)
+                                            post_h = posttax(t_h,par,d_h,inc=np.zeros(pre_h.shape),pens=pre_h,spouse_inc=pre_w+oap_w)
                                             par.inc_mixed[t,adx,st_h,st_w,ra_h,ra_w,d_h,d_w] = post_w + post_h
 
                                     # both working                                    
@@ -420,19 +407,9 @@ def precompute_inc_couple(par):
                                         pre_w = labor_pretax(t_w,0,st_w,par)*xi_corr[0]
                                         pre_h = labor_pretax(t_h,1,st_h,par)*xi_corr[1]
 
-                                        # potential oap, husband
-                                        oap_h = np.zeros(pre_h.shape)
-                                        # if t_h >= par.T_oap:
-                                        #     oap_h = oap_pretax(t_h,par,i=1,y=pre_h,y_spouse=pre_w)
-
-                                        # potential oap, wife
-                                        oap_w = np.zeros(pre_w.shape)
-                                        # if t_w >= par.T_oap:
-                                        #     oap_w = oap_pretax(t_w,par,i=1,y=pre_w,y_spouse=pre_h)
-
                                         # tax
-                                        post_w = posttax(t_w,par,d_w,inc=pre_w,pens=oap_w,spouse_inc=pre_h+oap_h)
-                                        post_h = posttax(t_h,par,d_h,inc=pre_h,pens=oap_h,spouse_inc=pre_w+oap_w)
+                                        post_w = posttax(t_w,par,d_w,inc=pre_w,pens=np.zeros(pre_w.shape),spouse_inc=pre_h)
+                                        post_h = posttax(t_h,par,d_h,inc=pre_h,pens=np.zeros(pre_h.shape),spouse_inc=pre_w)
                                         par.inc_joint[t,adx,st_h,st_w] = post_w + post_h
 
 ##################################
@@ -447,8 +424,8 @@ def posttax(t,par,d,inc=np.array([0.0]),pens=np.array([0.0]),spouse_inc=np.array
 
     # working deduction (so only applied to inc)
     # potentially extra deduction (fradrag) for use in policy simulation
-    if d == 1 and age(t,par) >= par.oap_age:
-        taxable_income = personal_income - np.minimum(personal_income[:],np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag))
+    if d == 1 and age(t,par) > par.oap_age:
+        taxable_income = personal_income - np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag)#np.minimum(personal_income[:],np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag))
     else:
         taxable_income = personal_income - np.minimum(par.WD*inc,par.WD_upper)
 
@@ -583,9 +560,9 @@ def survival(t,ma,st,par):
         if ma == 1: 
             rsm = par.reg_survival_male
             deadP = np.minimum(1,np.exp(rsm[0] + rsm[1]*ag))
-            survivalP = (1-deadP)*((hs==0)*(1-par.pi_adjust) + (hs==1)*(1+par.pi_adjust))
+            survivalP = (1-deadP)*((hs==0)*(1-par.pi_adjust_m) + (hs==1)*(1+par.pi_adjust_m))
         elif ma == 0:       
             rsf = par.reg_survival_female
             deadP = np.minimum(1,np.exp(rsf[0] + rsf[1]*ag))
-            survivalP = (1-deadP)*((hs==0)*(1-par.pi_adjust) + (hs==1)*(1+par.pi_adjust))
+            survivalP = (1-deadP)*((hs==0)*(1-par.pi_adjust_f) + (hs==1)*(1+par.pi_adjust_f))
         return np.minimum(1,survivalP) 

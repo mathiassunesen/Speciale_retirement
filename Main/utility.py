@@ -5,14 +5,18 @@ from numba import njit
 import transitions
 
 @njit(parallel=True)
-def func(c,d,male,st,par):
+def func(c,d,ma,st,par):
     """ utility function for singles"""    
 
     if d == 0:  # retired
         hs = transitions.state_translate(st,'high_skilled',par)
-        if male == 1:
+        # if ma == 1:
+        #     leisure = par.alpha_0_male + hs*par.alpha_1_male
+        # elif ma == 0:
+        #     leisure = par.alpha_0_female + hs*par.alpha_1_female
+        if ma == 1:
             leisure = par.alpha_0_male + hs*par.alpha_1
-        elif male == 0:
+        elif ma == 0:
             leisure = par.alpha_0_female + hs*par.alpha_1
         
     else:       # working
@@ -53,7 +57,6 @@ def func_c(c,d_h,d_w,st_h,st_w,par):
     Crho = (c/n)**(1-par.rho)/(1-par.rho)
     w = par.pareto_w
     return w*(Crho + lei_h) + (1-w)*(Crho + lei_w)
-
 
 @njit(parallel=True)
 def marg_func(c,par):     

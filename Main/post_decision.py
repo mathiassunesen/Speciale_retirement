@@ -45,28 +45,6 @@ def compute(t,ma,st,ra,D,sol_c,sol_m,sol_v,a,par):
         elif d == 1:
             w = par.xi_w[ma]
 
-        # # a. retire
-        # if d == 0:
-
-        #     # next period choice set and retirement age
-        #     d_plus = transitions.d_plus(t,d,par)
-        #     ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
-            
-        #     # next period income
-        #     w = np.array([1.0]) # no integration
-        #     inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)                           
-        
-        # # b. work
-        # elif d == 1:
-            
-        #     # next period choice set and retirement age 
-        #     d_plus = transitions.d_plus(t,d,par)
-        #     ra_plus = transitions.ra_look_up(t+1,st,ra,d,par)
-
-        #     # next period income
-        #     w = par.xi_w[ma]
-        #     inc = transitions.inc_lookup_single(d,t+1,ma,st,ra,par)  
-
         # c. integration            
         v_plus_raw[d],avg_marg_u_plus[d] = shocks_GH(t,Ra,inc,w,c[ra_plus],m[:],v[ra_plus],par,d_plus)
     
@@ -153,24 +131,7 @@ def compute_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
 ###############################
 @njit(parallel=True)
 def shocks_GH(t,inc_no_shock,inc,w,c,m,v,par,d_plus):     
-    """ compute v_plus_raw and avg_marg_u_plus using GaussHermite integration if necessary
-    
-    Args:
-        t (int): model time
-        inc_no_shock (numpy.ndarray): income with no shocks
-        inc (numpy.ndarray): income with shocks (the GH nodes have been multiplied to the income)
-        w (numpy.ndarray): GH weights
-        c (numpy.ndarray): next period consumption solution
-        m (numpy.ndarray): next period wealth solution
-        v (numpy.ndarray): next period value solution
-        c_plus_interp (numpy.ndarray): empty container for interpolation of c_plus
-        v_plus_interp (numpy.ndarray): empty container for interpolation of v_plus
-        par (class): parameters
-        d_plus (numpy.ndarray): choice set tomorrow
-
-    Returns:
-        v_plus_raw,avg_marg_u_plus (tuple)
-    """    
+    """ compute v_plus_raw and avg_marg_u_plus using GaussHermite integration if necessary """    
     
     # a. initialize  
     c_plus_interp = np.zeros((4,inc_no_shock.size))

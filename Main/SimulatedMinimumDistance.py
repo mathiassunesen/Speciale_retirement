@@ -177,7 +177,6 @@ class SimulatedMinimumDistance():
         # 3. Sensitivity measures
         self.sens1 = - np.linalg.inv(GWG) @ GW  # Andrews I, Gentzkow M, Shapiro JM: "Measuring the Sensitivity of Parameter Estimates to Estimation Moments." Quarterly Journal of Economics. 2017;132 (4) :1553-1592
        
-
     def sensitivity(self,theta,W,fixed_par_str=None,step=1.0e-4,*args):
         ''' sensitivity measures '''
 
@@ -199,7 +198,6 @@ class SimulatedMinimumDistance():
             mom_backward = - self.mom_sim
 
             grad[:,p] = (mom_forward - mom_backward)/(2.0*step_now[p])
-
 
         # 2. Sensitivity measures
         GW  = np.transpose(grad) @ W
@@ -259,7 +257,7 @@ def MomFunSingle(sim,par,calc='mean'):
     states = np.unique(sim.states,axis=0)
     MA = sim.states[:,0]
     ST = sim.states[:,1]    
-    probs = sim.probs[:,1:,0]*100 # 1: means exclude age 57 (since first prob is at 58)
+    probs = sim.probs[:,1:] # 1: means exclude age 57 (since first prob is at 58)
         
     # initialize
     T = probs.shape[1]
@@ -276,38 +274,83 @@ def MomFunSingle(sim,par,calc='mean'):
         elif calc == 'std':
             mom[:,i] = np.nanstd(probs[idx,:],axis=0)
     return mom.ravel() # collapse across rows (C-order)
-       
-def MomFunCouple(sim,par,std=False):
+
+def MomFunCouple(sim,par,calc='mean'):
     """ compute moments for couple model """    
     
     # unpack
-    states = np.unique(sim.states,axis=0)
-    AD = sim.states[:,0]
+    states = sim.states
+    AD = states[:,0]
     ST_h = sim.states[:,1]    
     ST_w = sim.states[:,2]
-    probs_h = sim.probs[:,1+par.ad_min:,1]*100 # 1: means exclude age 57 (since first prob is at 58)
-    probs_w = sim.probs[:,1+par.ad_min:,0]*100
+    ADx = np.unique(AD)
+    STx = np.unique(sim.states[1:],axis=0) # exclude AD at first entry
+    probs_h = sim.probs[:,1+par.ad_min+57-par.start_T:,1]
+    probs_w = sim.probs[:,1+par.ad_min+57-par.start_T:,0]
     
     # initialize
-    T = probs_h.shape[1]
-    N = len(states)
+    T = probs_h.shape[1]    
+    N = len(ADx)+len(STx)
     mom = np.zeros((2,T,N))
-    
-    # compute moments
-    for i in range(N):
-        ad = states[i,0]
+
+    # 1. across AD
+    for i in range(len(ADx)):
+        ad = ADx[i]
+        idx = np.nonzero((AD==ad))[0]
+        if calc == 'mean':
+            mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
+            mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
+        elif calc == 'std':
+            mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
+            mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)            
+
+    # 2. across couple states
+    for i in range(len(STx)):
         st_h = states[i,1]
         st_w = states[i,2]
-        idx = np.nonzero((AD==ad) & (ST_h==st_h) & (ST_w==st_w))[0]
-        if std:
-            mom[0,:,i] = np.nanstd(probs_h[idx,:],axis=0)
-            mom[1,:,i] = np.nanstd(probs_w[idx,:],axis=0)           
-        else:
-            mom[0,:,i] = np.nanmean(probs_h[idx,:],axis=0)
-            mom[1,:,i] = np.nanmean(probs_w[idx,:],axis=0)            
-    mom = mom.ravel()
-    mom[np.isnan(mom)] = 0 # there will be some nans,since we don't observe probs for all wives (due to age difference)
-    return mom             # and some groups are potentially very small, so if all die, then we don't observe probs
+        idx = np.nonzero((ST_h==st_h) & (ST_w==st_w))[0]
+        j = i + len(ADx)
+        if calc == 'mean':
+            mom[0,:,j] = np.nanmean(probs_h[idx],axis=0)
+            mom[1,:,j] = np.nanmean(probs_w[idx],axis=0)
+        elif calc == 'std':
+            mom[0,:,j] = np.nanstd(probs_h[idx],axis=0)
+            mom[1,:,j] = np.nanstd(probs_w[idx],axis=0)                          
+
+    # return
+    return mom.ravel()
+
+# def MomFunCouple(sim,par,std=False):
+#     """ compute moments for couple model """    
+    
+#     # unpack
+#     states = np.unique(sim.states,axis=0)
+#     AD = sim.states[:,0]
+#     ST_h = sim.states[:,1]    
+#     ST_w = sim.states[:,2]
+#     probs_h = sim.probs[:,1+par.ad_min:,1] # 1: means exclude age 57 (since first prob is at 58)
+#     probs_w = sim.probs[:,1+par.ad_min:,0]
+    
+#     # initialize
+#     T = probs_h.shape[1]
+#     N = len(states)
+#     mom = np.zeros((2,T,N))
+    
+#     # compute moments
+#     for i in range(N):
+#         ad = states[i,0]
+#         st_h = states[i,1]
+#         st_w = states[i,2]
+#         idx = np.nonzero((AD==ad) & (ST_h==st_h) & (ST_w==st_w))[0]
+#         if std:
+#             mom[0,:,i] = np.nanstd(probs_h[idx,:],axis=0)
+#             mom[1,:,i] = np.nanstd(probs_w[idx,:],axis=0)           
+#         else:
+#             mom[0,:,i] = np.nanmean(probs_h[idx,:],axis=0)
+#             mom[1,:,i] = np.nanmean(probs_w[idx,:],axis=0)            
+#     mom = mom.ravel()
+#     mom[np.isnan(mom)] = 0 # there will be some nans,since we don't observe probs for all wives (due to age difference)
+#     return mom             # and some groups are potentially very small, so if all die, then we don't observe probs
 
 def save_est(est_par,theta,name):
     """ save estimated parameters to "estimates"-folder """

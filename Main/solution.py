@@ -112,7 +112,7 @@ def solve_c(sol,single_sol,par):
         ad = it[j,0]
         st_h = it[j,1]
         st_w = it[j,2]
-        print(j)
+
         # solve
         solve_couple_model(ad,st_h,st_w,par,par.grid_a,
                            sol.c,sol.m,sol.v,

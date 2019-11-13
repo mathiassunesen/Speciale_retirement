@@ -62,10 +62,13 @@ class RetirementClass(ModelClass):
         # d. if couple also create a single class
         if couple:
             single_kwargs['start_T'] = self.par.start_T - self.par.ad_min # add some extra time periods in the bottom        
+            single_kwargs['var'] = self.par.var
             single_kwargs['reg_labor_male'] = self.par.reg_labor_male
             single_kwargs['reg_labor_female'] = self.par.reg_labor_female
             single_kwargs['g_adjust'] = self.par.g_adjust
             single_kwargs['priv_pension'] = self.par.priv_pension
+            single_kwargs['simN'] = 100   # we don't need sim so we don't want to waste memory
+            single_kwargs['simT'] = 1
             self.Single = RetirementClass(name=name+'_single',year=year,**single_kwargs)
     
     def pars(self,**kwargs):
@@ -117,8 +120,8 @@ class RetirementClass(ModelClass):
         # preference parameters
         self.par.rho = 0.96                         # crra
         self.par.beta = 0.98                        # time preference
-        self.par.alpha_0_male = 0.160               # constant, own leisure
-        self.par.alpha_0_female = 0.160             # constant, own leisure
+        self.par.alpha_0_male = 0.4                 # constant, own leisure
+        self.par.alpha_0_female = 0.4               # constant, own leisure
         self.par.alpha_1 = 0.053                    # high skilled, own leisure
         self.par.gamma = 0.08                       # bequest motive
         if self.couple:
@@ -137,7 +140,8 @@ class RetirementClass(ModelClass):
             self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
 
         # initial estimations
-        self.par.pi_adjust =                0.4/100        
+        self.par.pi_adjust_f =              0.216/100  
+        self.par.pi_adjust_m =              0.422/100        
         self.par.reg_survival_male =        np.array((-10.338, 0.097))          # order is: cons, age
         self.par.reg_survival_female =      np.array((-11.142, 0.103))          # order is: cons, age
 
@@ -148,7 +152,7 @@ class RetirementClass(ModelClass):
             self.par.reg_labor_female =     np.array((-4.002, 0.318, 0.544, -0.453))        # order is: cons, high_skilled, age, age2    
 
             # private pension
-            self.par.g_adjust = 0.5
+            self.par.g_adjust = 0.75
             self.par.priv_pension =         np.array((728*1000, 1236*1000))/self.par.denom  # order is: female, male
 
         else:
@@ -158,7 +162,7 @@ class RetirementClass(ModelClass):
             self.par.reg_labor_female =     np.array((-18.937, 0.248, 1.036, -0.856))       # order is: cons, high_skilled, age, age2 
             
             # private pension
-            self.par.g_adjust = 0.5
+            self.par.g_adjust = 0.75
             self.par.priv_pension =         np.array((744*1000, 682*1000))/self.par.denom   # order is: female, male
 
         # tax and retirement system
@@ -244,25 +248,26 @@ class RetirementClass(ModelClass):
     # simulate #
     ############
     def _simulate_prep(self,accuracy,tax):
-        """ allocate memory for simulation and draw random numbers """
+        """ allocate memory for simulation """
 
         if self.couple:
 
+            extend = self.par.ad_min + self.par.ad_max
+
             # solution
             self.sim.c = np.nan*np.zeros((self.par.simN,self.par.simT))
-            self.sim.m = np.nan*np.zeros((self.par.simN,self.par.simT))
             self.sim.a = np.nan*np.zeros((self.par.simN,self.par.simT))
-            self.sim.d = np.nan*np.zeros((self.par.simN,self.par.simT,2))
+            self.sim.d = np.nan*np.zeros((self.par.simN,self.par.simT+extend,2))
 
-            # dummies, probabilities and euler errors
-            self.sim.moments = np.nan*np.zeros((self.par.simT-1,len(self.par.iterator),2))
-            self.sim.probs = np.nan*np.zeros((self.par.simN,self.par.simT+self.par.ad_min,2))     
+            # misc
+            self.sim.probs = np.nan*np.zeros((self.par.simN,self.par.simT+extend,2))  
             self.sim.RA = 2*np.ones((self.par.simN,2),dtype=int)
             self.sim.euler = np.nan*np.zeros((self.par.simN,self.par.simT-1))
+            self.sim.GovS = np.nan*np.zeros((self.par.simN,self.par.simT))            
 
-            # initialize m and d
-            self.sim.m[:,0] = self.par.simM_init  
-            self.sim.d[:,0] = 1     
+            # booleans
+            self.sim.accuracy = accuracy
+            self.sim.tax = tax
 
         else:
 
@@ -272,8 +277,8 @@ class RetirementClass(ModelClass):
             self.sim.d = np.nan*np.zeros((self.par.simN,self.par.simT))
 
             # misc
-            self.sim.probs = np.nan*np.zeros((self.par.simN,self.par.simT,1))  
-            self.sim.RA = 2*np.ones((self.par.simN,1),dtype=int)
+            self.sim.probs = np.nan*np.zeros((self.par.simN,self.par.simT))  
+            self.sim.RA = 2*np.ones((self.par.simN),dtype=int)
             self.sim.euler = np.nan*np.zeros((self.par.simN,self.par.simT-1))
             self.sim.GovS = np.nan*np.zeros((self.par.simN,self.par.simT))
 
@@ -304,6 +309,11 @@ class RetirementClass(ModelClass):
             simulate.lifecycle(self.sim,self.sol,self.par)
     
 
+# Single = RetirementClass()
+# Single.solve()
+# Single.simulate()
+
+
 # test = RetirementClass()
 # test._simulate_prep(False,False)
 # test.solve()
@@ -317,4 +327,6 @@ class RetirementClass(ModelClass):
 
 # test = RetirementClass(couple=True, load=True)
 # test.Single = RetirementClass(name='baseline_single', load=True)
-# test.simulate()
+# # test.par.simT=12
+# test.recompute()
+# test.simulate(tax=True)
