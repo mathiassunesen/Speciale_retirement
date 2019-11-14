@@ -325,25 +325,7 @@ def retirement_probs_c(model,ma,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[
     return {'y': [y], 'x': x, 'xticks': x, 'xlabel': 'Age', 'ylabel': 'Retirement probability', 'label': ['Predicted']}
 
 def policy_c(model,ax,var,T,AD,ST_h,ST_w,RA_h,RA_w,D_h,D_w,label=False,xlim=None,ylim=None,bottom=0):
-    """ plot either consumption or value functions
-    
-    Args:
-        model (class): parameters, solution and simulation
-        ax (axes): axes object for plotting
-        var (str): either 'c' for consumption or 'v' for value function
-        T (list): list of times
-        AD (list): list of age differences
-        ST_h (list): list of states, husband
-        ST_h (list): list of states, wife
-        D_h (list): list of choices, husband
-        D_w (list): list of choices, wife        
-        label (list, optional): list of what to show in label
-        xlim (list, optional): set x axis
-        ylim (list, optional): set y axis
-
-    Returns:
-        ax (axes): axes object for plotting
-    """
+    """ plot either consumption or value functions for couples """
 
     # unpack
     sol = model.sol
@@ -453,9 +435,7 @@ def resolve(model,vars,recompute=True,accuracy=False,tax=True,MA=[0,1],ST=[0,1,2
             setattr(model.par,str(keys[k]),values[k][v])
 
         # solve and simulate
-        if recompute:
-            model.recompute()
-        model.solve()
+        model.solve(recompute=recompute)
         model.simulate(accuracy=accuracy,tax=tax)
 
         # policy
@@ -486,7 +466,7 @@ def resolve_c(model,vars,recompute=True,accuracy=False,tax=True,
             
         # solve and simulate
         model.solve(recompute=recompute)
-        model.simulate(recompute=recompute,accuracy=accuracy)
+        model.simulate(accuracy=accuracy,tax=tax)
 
         # policy
         for var in vars:
@@ -507,85 +487,3 @@ def sens_fig_tab(sens,sense,theta,est_par_tex,fixed_par_tex):
     ax = sns.heatmap(sense,annot=True,fmt="2.2f",annot_kws={"size": fs},xticklabels=fixed_par_tex,yticklabels=est_par_tex,center=0,linewidth=.5,cmap=cmap)
     plt.yticks(rotation=0) 
     ax.tick_params(axis='both', which='major', labelsize=20)
-
-
-
-def plot_3D(dict,x_ax,y_ax,z_ax):
-    
-       
-    xgrid = np.array(dict[x_ax])
-    zgrid = np.array(dict[z_ax])
-    ygrid = np.array(dict[y_ax])
-    x, z = np.meshgrid(xgrid, zgrid)
-    y, x = np.meshgrid(ygrid, xgrid)
-    
-    fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(x,
-                    y,
-                    z,
-                    rstride=2, cstride=2,
-                    cmap=cm.jet,
-                    alpha=0.7,
-                    linewidth=0.25)
-    ax.set_xlabel(x_ax)
-    ax.set_ylabel(y_ax)
-    ax.set_zlabel(z_ax)
-    ax.set_ylim([0,100])
-    plt.show()    
-
-def plot_3DD(dict,x_ax,y_ax,z_ax):
-    #Sort data:
-    x = dict[x_ax]
-    y = dict[y_ax]
-    z = dict[z_ax]
-
-    idx = np.argsort(x)
-    x_sort = []
-    y_sort = []
-    z_sort = []
-    for i in idx:
-        x_sort.append(x[i])
-        y_sort.append(y[i])
-        z_sort.append(z[i])
-    #Plot data
-    xgrid = np.array(x_sort)
-    zgrid = np.array(z_sort)
-    ygrid = np.array(y_sort)
-    x, z = np.meshgrid(xgrid, zgrid)
-    y, x = np.meshgrid(ygrid, xgrid)
-    
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(x,
-                    y,
-                    z,
-                    rstride=2, cstride=2,
-                    cmap=cm.jet,
-                    alpha=0.7,
-                    linewidth=0.25)
-    ax.set_xlabel(x_ax)
-    ax.set_ylabel(y_ax)
-    ax.set_zlabel(z_ax)
-    plt.show()   
-
-def plot_2DD(dict,x_ax,y_ax,xlim,ylim):
-    #Sort data
-    x = dict[x_ax]
-    y = dict[y_ax]
-    idx = np.argsort(x)
-
-    x_sort = []
-    y_sort = []
-    for i in idx:
-        x_sort.append(x[i])
-        y_sort.append(y[i])
-    
-    #Plot data:
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111)
-    plt.plot(x_sort,y_sort)
-    # c. details
-    ax.set_ylim([ylim[0],ylim[1]])
-    ax.set_xlim([xlim[0],xlim[1]])
-    ax.set(xlabel=x_ax, ylabel=y_ax)  

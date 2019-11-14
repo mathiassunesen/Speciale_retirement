@@ -5,28 +5,24 @@ from numba import njit
 import transitions
 
 @njit(parallel=True)
-def func(c,d,ma,st,par):
+def func(c,t,d,ma,st,par):
     """ utility function for singles"""    
 
     if d == 0:  # retired
         hs = transitions.state_translate(st,'high_skilled',par)
-        # if ma == 1:
-        #     leisure = par.alpha_0_male + hs*par.alpha_1_male
-        # elif ma == 0:
-        #     leisure = par.alpha_0_female + hs*par.alpha_1_female
         if ma == 1:
             leisure = par.alpha_0_male + hs*par.alpha_1
         elif ma == 0:
             leisure = par.alpha_0_female + hs*par.alpha_1
         
     else:       # working
-        leisure = 0
+        leisure = 0 - par.alpha_2*(t==par.T_oap)    # disutility if not retired at OAP age (65)
               
     return c**(1-par.rho)/(1-par.rho) + leisure
 
 
 @njit(parallel=True)
-def func_c(c,d_h,d_w,st_h,st_w,par):
+def func_c(c,t,ad,d_h,d_w,st_h,st_w,par):
     """ utility function for couples"""    
     
     # high skilled
@@ -51,8 +47,8 @@ def func_c(c,d_h,d_w,st_h,st_w,par):
     elif d_h == 1 and d_w == 0:    # only wife retired
         alpha_w = par.alpha_0_female + hs_w*par.alpha_1
 
-    lei_h = alpha_h*(1 + phi_h)
-    lei_w = alpha_w*(1 + phi_w)
+    lei_h = alpha_h*(1 + phi_h) - par.alpha_2*d_h*(t==par.T_oap)
+    lei_w = alpha_w*(1 + phi_w) - par.alpha_2*d_w*(t+ad==par.T_oap)
     n = 1 + par.v*(2-1) # equivalence scale
     Crho = (c/n)**(1-par.rho)/(1-par.rho)
     w = par.pareto_w

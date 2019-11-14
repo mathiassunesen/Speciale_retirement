@@ -211,15 +211,6 @@ def survival_lookup_couple(t,ad,st_h,st_w,par):
 ##################################
 ####      precompute          ####
 ##################################
-def precompute(model):
-    """ precompute income streams and survival (wrapper) """
-
-    if model.couple:
-        precompute_inc_couple(model.par)
-
-    else:
-        precompute_inc_single(model.par)
-
 def precompute_survival(par):
     """ precompute survival probabilities """
     
@@ -287,6 +278,7 @@ def precompute_inc_single(par):
                         pre = erp_pretax(t-ad_min,ma,st,ra,par)
                         par.erp[t-par.T_erp,ma,st,ra] = posttax(t-ad_min,par,d=0,pens=pre)
 
+#@njit(parallel=True)
 def precompute_inc_couple(par):
     """ precompute income streams for couples """
 

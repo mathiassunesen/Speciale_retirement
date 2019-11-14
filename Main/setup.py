@@ -52,6 +52,7 @@ def single_lists():
             ('alpha_0_male',double), 
             ('alpha_0_female',double),          
             ('alpha_1',double),
+            ('alpha_2',double),
             ('gamma',double),            
 
             # uncertainty/variance parameters
@@ -356,26 +357,19 @@ def grids(par):
     if par.couple:                      
         par.xi_corr,par.w_corr = funs.GH_lognorm_corr(par.var,par.cov,par.Nxi_men,par.Nxi_women)    
 
-def init_sim(model):
-    """ initialize simulation (wrapper) """
-
-    # set seed
-    np.random.seed(model.par.sim_seed) 
-
-    if model.couple:
-        init_sim_couple(model)
-    else:
-        init_sim_single(model)
-
-def init_sim_single(model):
-    """ initialize simulation for singles """
-
-    # unpack 
-    par = model.par
-    sim = model.sim
-
+def init_sim(par,sim):
+    """ initialize simulation """
+    
     # initialize m and states
     state_and_m(par,sim,perc_num=10)
+
+    if par.couple:
+        init_sim_couple(par,sim)
+    else:
+        init_sim_single(par,sim)
+
+def init_sim_single(par,sim):
+    """ initialize simulation for singles """
 
     # random draws       
     sim.choiceP = np.random.rand(par.simN,par.simT,1)                            
@@ -416,14 +410,8 @@ def init_sim_single(model):
                     sim.labor_pre[idx,t,ma] = transitions.labor_pretax(t,ma,st,par)*shocks
                     sim.labor_post[idx,t,ma] = transitions.posttax(t,par,d=1,inc=sim.labor_pre[idx,t,ma],pens=np.zeros(len(idx)),spouse_inc=np.zeros(len(idx)))
 
-def init_sim_couple(model):
-
-    # unpack 
-    par = model.par
-    sim = model.sim
-            
-    # initialize m and states
-    state_and_m(par,sim,perc_num=10)
+def init_sim_couple(par,sim):
+    """ initialize simulation for couples """
 
     # random draws for simulation
     ad_min = par.ad_min
@@ -436,6 +424,9 @@ def init_sim_couple(model):
     AD = sim.states[:,0]
     ST_h = sim.states[:,1]
     ST_w = sim.states[:,2]
+    ADx = np.unique(AD)
+    ST_hx = np.unique(ST_h)
+    ST_wx = np.unique(ST_w)
 
     # 1. alive status
     sim.alive = np.ones((par.simN,par.simT+extend,2),dtype=int)
@@ -445,17 +436,17 @@ def init_sim_couple(model):
     deadP_w = deadP[:,:,0]
     deadP_h = deadP[:,:,1]
     for t in range(par.simT):
-        for ad in np.unique(AD):  
-            for st_h in np.unique(ST_h):
-                for st_w in np.unique(ST_w):
+        if t > 0:
+            for ad in ADx:  
 
-                    tw_idx = t+ad+par.ad_min
-                    th_idx = t+par.ad_min
+                tw_idx = t+ad+par.ad_min
+                th_idx = t+par.ad_min
+                alive_w[alive_w[:,tw_idx-1] == 0, tw_idx] = 0
+                alive_h[alive_h[:,th_idx-1] == 0, th_idx] = 0
 
-                    if t > 0:
-                        alive_w[alive_w[:,tw_idx-1] == 0, tw_idx] = 0
-                        alive_h[alive_h[:,th_idx-1] == 0, th_idx] = 0
-
+                for st_h in ST_hx:
+                    for st_w in ST_wx:
+                                                
                         pi_h,pi_w = transitions.survival_lookup_couple(t,ad,st_h,st_w,par) 
                         idx = np.nonzero(AD==ad)[0]                              
                         dead_w = idx[pi_w < deadP_w[idx,tw_idx]]
@@ -474,7 +465,7 @@ def init_sim_couple(model):
 
     # 2.a individual labor income (post tax can be used for singles, only pre tax can be used for couples, since we don't know pension of spouse) 
     for t in range(min(par.simT,par.Tr+ad_min)):
-        for ad in np.unique(AD):
+        for ad in ADx:
 
             t_h = t
             t_w = t+ad
@@ -499,11 +490,10 @@ def init_sim_couple(model):
 
     # 2.b joint labor income (if they both work)
     for t in range(Tr):
-        for ad in np.unique(AD):
-            for st_h in np.unique(ST_h):
-                for st_w in np.unique(ST_w):
-
-                    if t < par.Tr and t+ad < par.Tr:
+        for ad in ADx:
+            if t < par.Tr and t+ad < par.Tr:
+                for st_h in ST_hx:
+                    for st_w in ST_wx:
                         
                         # indices
                         th_idx = t+ad_min

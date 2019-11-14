@@ -12,7 +12,6 @@ import transitions
 import last_period
 import funs
 
-
 @njit(parallel=True)
 def ret_dict(t,par):
     """ function which mimics a dict, returns information on how to resolve the model for retirement status"""
@@ -56,7 +55,6 @@ def solve(sol,par):
                 
         # solve
         solve_single_model(ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)                
-
 
 @njit(parallel=True)
 def solve_single_model(ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par):
@@ -103,12 +101,12 @@ def solve_single_model(ma,st,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plu
             D = np.array([0,1])
             egm.solve_bellman(t,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_plus,a,par)
 
-
+@njit(parallel=True)
 def solve_c(sol,single_sol,par):
     """ wrapper for solving the couple model"""
 
     it = par.iterator
-    for j in range(len(it)):
+    for j in prange(len(it)):
         ad = it[j,0]
         st_h = it[j,1]
         st_w = it[j,2]

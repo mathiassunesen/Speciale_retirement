@@ -97,13 +97,13 @@ class RetirementClass(ModelClass):
 
         # simulation
         self.par.sim_seed = 2019
-        self.par.simN = 100000            
+        self.par.simN = int(1e5)            
 
         # savings
         self.par.R = 1.03       # interest rate             
 
         # grids
-        self.par.a_max = 100    # 10 mio. kr. denominated in 100.000 kr
+        self.par.a_max = 150    # 15 mio. kr. denominated in 100.000 kr
         self.par.a_phi = 1.5    # curvature of grid
         self.par.Na = 200       # no. of points in a grid
         self.par.Nxi = 8        # no. of GH-points
@@ -123,6 +123,7 @@ class RetirementClass(ModelClass):
         self.par.alpha_0_male = 0.4                 # constant, own leisure
         self.par.alpha_0_female = 0.4               # constant, own leisure
         self.par.alpha_1 = 0.053                    # high skilled, own leisure
+        self.par.alpha_2 = 0.5                      # social norm
         self.par.gamma = 0.08                       # bequest motive
         if self.couple:
             self.par.pareto_w = 0.5                 # pareto weight 
@@ -173,27 +174,31 @@ class RetirementClass(ModelClass):
         for key,val in kwargs.items():
             setattr(self.par,key,val) # like par.key = val
 
-        # c. translate to model time and setup grids
-        setup.model_time(self.par)
-        setup.grids(self.par)
-
-        # d. precompute and initialize simulation (sensitive to the order)
-        transitions.precompute_survival(self.par)
-        setup.init_sim(self)
-        transitions.precompute(self)
+        # c. precompute
+        self.recompute()
 
     def recompute(self):
         """ recompute precomputations if institutional variables have been changed """ 
+        # 1. translate to model time and setup grids        
         setup.model_time(self.par)
+        setup.grids(self.par)
+        
+        # 2. precompute and initialize simulation (sensitive to the order)
         transitions.precompute_survival(self.par)
-        setup.init_sim(self)
-        transitions.precompute(self)
+        setup.init_sim(self.par,self.sim)
+        if self.couple:
+            transitions.precompute_inc_couple(self.par)
+        else:
+            transitions.precompute_inc_single(self.par)
 
     #########
     # solve #
     #########
-    def _solve_prep(self):
+    def _solve_prep(self,recompute):
         """ allocate memory for solution """ 
+
+        if recompute:
+            self.recompute()
 
         # prep
         T = self.par.T          
@@ -223,14 +228,14 @@ class RetirementClass(ModelClass):
             self.sol.avg_marg_u_plus = np.nan*np.zeros((T,NMA,NST,NRA,ND,Na))
             self.sol.v_plus_raw = np.nan*np.zeros((T,NMA,NST,NRA,ND,Na)) 
 
-    def solve(self):
+    def solve(self,recompute=False):
         """ solve the model """
 
         if self.couple:
 
             # allocate solution
-            self.Single._solve_prep()
-            self._solve_prep()
+            self.Single._solve_prep(recompute)
+            self._solve_prep(recompute)
         
             # solve model
             solution.solve(self.Single.sol,self.Single.par)
@@ -239,7 +244,7 @@ class RetirementClass(ModelClass):
         else:
 
             # allocate solution
-            self._solve_prep()
+            self._solve_prep(recompute)
 
             # solve model
             solution.solve(self.sol,self.par)
