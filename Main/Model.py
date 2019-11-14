@@ -123,7 +123,7 @@ class RetirementClass(ModelClass):
         self.par.alpha_0_male = 0.4                 # constant, own leisure
         self.par.alpha_0_female = 0.4               # constant, own leisure
         self.par.alpha_1 = 0.053                    # high skilled, own leisure
-        self.par.alpha_2 = 0.5                      # social norm
+        self.par.alpha_2 = 0.0                      # social norm
         self.par.gamma = 0.08                       # bequest motive
         if self.couple:
             self.par.pareto_w = 0.5                 # pareto weight 

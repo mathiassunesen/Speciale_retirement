@@ -285,11 +285,11 @@ def MomFunCouple(sim,par,calc='mean'):
     ST_w = sim.states[:,2]
     ADx = np.unique(AD)
     STx = np.unique(sim.states[1:],axis=0) # exclude AD at first entry
-    probs_h = sim.probs[:,1+par.ad_min+57-par.start_T:,1]
-    probs_w = sim.probs[:,1+par.ad_min+57-par.start_T:,0]
+    probs_h = sim.probs[:,1+par.ad_min:par.simT+par.ad_max,1]
+    probs_w = sim.probs[:,1+par.ad_min:par.simT+par.ad_max,0]
     
     # initialize
-    T = probs_h.shape[1]    
+    T = par.simT-1    
     N = len(ADx)+len(STx)
     mom = np.zeros((2,T,N))
 
@@ -318,7 +318,9 @@ def MomFunCouple(sim,par,calc='mean'):
             mom[1,:,j] = np.nanstd(probs_w[idx],axis=0)                          
 
     # return
-    return mom.ravel()
+    mom = mom.ravel()
+    mom[np.isnan(mom)] = 0  # set nan to zero
+    return mom
 
 # def MomFunCouple(sim,par,std=False):
 #     """ compute moments for couple model """    
