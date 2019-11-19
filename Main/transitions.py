@@ -211,6 +211,7 @@ def survival_lookup_couple(t,ad,st_h,st_w,par):
 ##################################
 ####      precompute          ####
 ##################################
+@njit(parallel=True)
 def precompute_survival(par):
     """ precompute survival probabilities """
     
@@ -221,13 +222,15 @@ def precompute_survival(par):
     
     # initialize
     par.survival = np.nan*np.zeros((T,NMA,NST))
-    
+    surv = par.survival
+
     # compute
     for t in range(T):
         for ma in range(NMA):
             for st in range(NST):
-                par.survival[t,ma,st] = survival(t-par.ad_min,ma,st,par)
+                surv[t,ma,st] = survival(t-par.ad_min,ma,st,par)
 
+@njit(parallel=True)
 def precompute_inc_single(par):
     """ precompute income streams for singles """
 
@@ -254,14 +257,17 @@ def precompute_inc_single(par):
     par.oap = np.nan*np.zeros(T_oap)
     par.labor = np.nan*np.zeros((Tr,NMA,NST,Nxi)) 
     par.erp = np.nan*np.zeros((T_erp,NMA,NST,NRA))
-        
+    oap = par.oap
+    labor = par.labor
+    erp = par.erp
+
     # precompute income
     for t in range(T):
 
         # oap
         if t-ad_min >= par.T_oap:
             pre = oap_pretax(t-ad_min,par,i=0)
-            par.oap[:] = posttax(t-ad_min,par,d=0,pens=pre)
+            oap[:] = posttax(t-ad_min,par,d=0,inc=pre)[0]
 
         for ma in range(NMA):
             for st in range(NST):
@@ -269,17 +275,43 @@ def precompute_inc_single(par):
                 # labor income
                 if t-ad_min < par.Tr:
                     pre = labor_pretax(t-ad_min,ma,st,par)*xi[ma]
-                    pre_oap = np.zeros(pre.shape)
-                    par.labor[t,ma,st] = posttax(t-ad_min,par,d=1,inc=pre,pens=pre_oap)
+                    labor[t,ma,st] = posttax(t-ad_min,par,d=1,inc=pre)
 
                 # erp
                 if par.T_erp <= t-ad_min < par.T_oap:
                     for ra in range(NRA):
                         pre = erp_pretax(t-ad_min,ma,st,ra,par)
-                        par.erp[t-par.T_erp,ma,st,ra] = posttax(t-ad_min,par,d=0,pens=pre)
+                        erp[t-par.T_erp,ma,st,ra] = posttax(t-ad_min,par,d=0,inc=pre)[0]
 
-#@njit(parallel=True)
 def precompute_inc_couple(par):
+    """ wrapper for precomputing income streams for couples """
+
+    # states
+    NAD = len(par.AD)
+    NST = len(par.ST)
+    NRA = 3
+    ND = 4
+    nd = 2 #int(ND/2)
+
+    # shocks
+    Nxi = par.Nxi    
+    Nxi_corr = par.Nxi_women*par.Nxi_men 
+
+    # time lines
+    extend = par.ad_min+par.ad_max
+    T = par.T+extend                   
+    Tr = par.Tr+extend
+
+    # allocate
+    par.inc_pens = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA))
+    par.inc_mixed = np.nan*np.zeros((Tr,NAD,NST,NST,NRA,NRA,nd,nd,Nxi))
+    par.inc_joint = np.nan*np.zeros((par.Tr,NAD,NST,NST,Nxi_corr))    
+    
+    # precompute
+    compute_inc_couple(par)
+
+@njit(parallel=True)
+def compute_inc_couple(par):
     """ precompute income streams for couples """
 
     # states
@@ -287,25 +319,20 @@ def precompute_inc_couple(par):
     NST = len(par.ST)
     NRA = 3
     ND = 4
-    nd = int(ND/2)
+    nd = 2 #int(ND/2)
 
-    # shocks (labor income)
+    # shocks
     xi = par.xi    
-    Nxi = par.Nxi    
-    xi_corr = par.xi_corr
-    Nxi_corr = par.Nxi_women*par.Nxi_men
+    xi_corr = par.xi_corr 
 
     # time lines
-    ad_min = par.ad_min
-    ad_max = par.ad_max    
-    extend = ad_min+ad_max
-    T = par.T+extend                   
-    Tr = par.Tr+extend
+    extend = par.ad_min+par.ad_max
+    T = par.T+extend
 
-    # initialize
-    par.inc_pens = np.nan*np.zeros((T,NAD,NST,NST,NRA,NRA))
-    par.inc_mixed = np.nan*np.zeros((Tr,NAD,NST,NST,NRA,NRA,nd,nd,Nxi))
-    par.inc_joint = np.nan*np.zeros((par.Tr,NAD,NST,NST,Nxi_corr))
+    # pointer
+    inc_pens = par.inc_pens
+    inc_mixed = par.inc_mixed
+    inc_joint = par.inc_joint
     
     # precompute income
     for t in range(T):
@@ -348,9 +375,9 @@ def precompute_inc_couple(par):
                                             pre_w = erp_pretax(t_w,0,st_w,ra_w,par)
 
                                         # tax
-                                        post_h = posttax(t_h,par,d_h,pens=pre_h,spouse_inc=pre_w)
-                                        post_w = posttax(t_w,par,d_w,pens=pre_w,spouse_inc=pre_h)
-                                        par.inc_pens[t,adx,st_h,st_w,ra_h,ra_w] = post_h + post_w
+                                        post_h = posttax(t_h,par,d=d_h,inc=pre_h,inc_s=pre_w,d_s=d_w,t_s=t_w)
+                                        post_w = posttax(t_w,par,d=d_w,inc=pre_w,inc_s=pre_h,d_s=d_h,t_s=t_h)
+                                        inc_pens[t,adx,st_h,st_w,ra_h,ra_w] = post_h[0] + post_w[0]
 
                                     # husband working
                                     if d_h == 1 and d_w == 0:
@@ -358,19 +385,18 @@ def precompute_inc_couple(par):
                                         # husband
                                         if t_h < par.Tr:
                                             pre_h = labor_pretax(t_h,1,st_h,par)*xi[1]
-                                            oap_h = np.zeros(pre_h.shape)
 
                                             # wife
                                             pre_w = np.zeros(pre_h.shape)
                                             if t_w >= par.T_oap:
                                                 pre_w[:] = oap_pretax(t_w,par,i=1,y=pre_w,y_spouse=pre_h)
                                             elif par.T_erp <= t_w < par.T_oap:
-                                                pre_w[:] = erp_pretax(t_w,0,st_w,ra_w,par)
+                                                pre_w[:] = erp_pretax(t_w,0,st_w,ra_w,par)[0]
 
-                                            # tax
-                                            post_h = posttax(t_h,par,d_h,inc=pre_h,pens=oap_h,spouse_inc=pre_w)
-                                            post_w = posttax(t_w,par,d_w,inc=np.zeros(pre_w.shape),pens=pre_w,spouse_inc=pre_h+oap_h)
-                                            par.inc_mixed[t,adx,st_h,st_w,ra_h,ra_w,d_h,d_w] = post_h + post_w
+                                            # tax                                        
+                                            post_h = posttax(t_h,par,d=d_h,inc=pre_h,inc_s=pre_w,d_s=d_w,t_s=t_w)
+                                            post_w = posttax(t_w,par,d=d_w,inc=pre_w,inc_s=pre_h,d_s=d_h,t_s=t_h)
+                                            inc_mixed[t,adx,st_h,st_w,ra_h,ra_w,d_h,d_w] = post_h + post_w
 
                                     # wife working
                                     if d_h == 0 and d_w == 1:
@@ -378,19 +404,18 @@ def precompute_inc_couple(par):
                                         # wife
                                         if t_w < par.Tr:
                                             pre_w = labor_pretax(t_w,0,st_w,par)*xi[0]
-                                            oap_w = np.zeros(pre_w.shape)
 
                                             # husband
                                             pre_h = np.zeros(pre_w.shape)
                                             if t_h >= par.T_oap:
                                                 pre_h[:] = oap_pretax(t_h,par,i=1,y=pre_h,y_spouse=pre_w)
                                             elif par.T_erp <= t_h < par.T_oap:
-                                                pre_h[:] = erp_pretax(t_h,1,st_h,ra_h,par)
+                                                pre_h[:] = erp_pretax(t_h,1,st_h,ra_h,par)[0]
 
                                             # tax
-                                            post_w = posttax(t_w,par,d_w,inc=pre_w,pens=oap_w,spouse_inc=pre_h)
-                                            post_h = posttax(t_h,par,d_h,inc=np.zeros(pre_h.shape),pens=pre_h,spouse_inc=pre_w+oap_w)
-                                            par.inc_mixed[t,adx,st_h,st_w,ra_h,ra_w,d_h,d_w] = post_w + post_h
+                                            post_w = posttax(t_w,par,d=d_w,inc=pre_w,inc_s=pre_h,d_s=d_h,t_s=t_h)
+                                            post_h = posttax(t_h,par,d=d_h,inc=pre_h,inc_s=pre_w,d_s=d_w,t_s=t_w)
+                                            inc_mixed[t,adx,st_h,st_w,ra_h,ra_w,d_h,d_w] = post_w + post_h
 
                                     # both working                                    
                                     if d_h == 1 and d_w == 1 and max(t_h,t_w) < par.Tr:
@@ -400,38 +425,47 @@ def precompute_inc_couple(par):
                                         pre_h = labor_pretax(t_h,1,st_h,par)*xi_corr[1]
 
                                         # tax
-                                        post_w = posttax(t_w,par,d_w,inc=pre_w,pens=np.zeros(pre_w.shape),spouse_inc=pre_h)
-                                        post_h = posttax(t_h,par,d_h,inc=pre_h,pens=np.zeros(pre_h.shape),spouse_inc=pre_w)
-                                        par.inc_joint[t,adx,st_h,st_w] = post_w + post_h
+                                        post_w = posttax(t_w,par,d=d_w,inc=pre_w,inc_s=pre_h,d_s=d_h,t_s=t_h)
+                                        post_h = posttax(t_h,par,d=d_h,inc=pre_h,inc_s=pre_w,d_s=d_w,t_s=t_w)
+                                        inc_joint[t,adx,st_h,st_w] = post_w + post_h
 
 ##################################
 ####        tax system       #####
 ##################################
 @njit(parallel=True)
-def posttax(t,par,d,inc=np.array([0.0]),pens=np.array([0.0]),spouse_inc=np.array([0.0])):
+def posttax(t,par,d,inc,inc_s=np.array([np.nan]),d_s=np.nan,t_s=np.nan):
     """ compute posttax income """    
 
     # labor market contribution is only applied to labor income
-    personal_income = (1 - par.tau_LMC*d)*inc + pens
+    personal_income = (1 - par.tau_LMC*d)*inc
 
     # working deduction (so only applied to inc)
     # potentially extra deduction (fradrag) for use in policy simulation
-    if d == 1 and age(t,par) > par.oap_age:
-        taxable_income = personal_income - np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag)#np.minimum(personal_income[:],np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag))
+    if d == 1 and t > par.T_oap:
+        taxable_income = personal_income - np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag)
     else:
-        taxable_income = personal_income - np.minimum(par.WD*inc,par.WD_upper)
+        taxable_income = personal_income - np.minimum(par.WD*inc,par.WD_upper)*d
 
     # potential shared spouse deduction
     if par.couple:
-        y_low_l = par.y_low + np.maximum(0,par.y_low-spouse_inc)
+        personal_spouse = (1 - par.tau_LMC*d_s)*inc_s
+
+        if d_s == 1 and t_s > par.T_oap:
+            taxable_spouse = personal_spouse - np.maximum(np.minimum(par.WD*inc_s,par.WD_upper),par.fradrag)*d_s
+        else:
+            taxable_spouse = personal_spouse - np.minimum(par.WD*inc_s,par.WD_upper)*d_s
+        y_l = par.y_low + np.maximum(0,par.y_low-taxable_spouse)
+        y_m = par.y_low_m + np.maximum(0,par.y_low_m-personal_spouse)
+    
     else:
-        y_low_l = par.y_low*np.ones(inc.shape)
+        y_l = par.y_low*np.ones(inc.shape)
+        y_m = par.y_low_m*np.ones(inc.shape)
         
     # taxes
-    T_c = np.maximum(0,par.tau_c*(taxable_income - y_low_l[:]))
-    T_h = np.maximum(0,par.tau_h*(taxable_income - y_low_l[:]))
-    T_l = np.maximum(0,par.tau_m*(personal_income - y_low_l[:]))
-    T_m = np.maximum(0,par.tau_m*(personal_income - par.y_low_m))
+    T_c = np.maximum(0,par.tau_c*(taxable_income - y_l[:]))
+    T_h = np.maximum(0,par.tau_h*(taxable_income - y_l[:]))
+    T_l = np.maximum(0,par.tau_m*(personal_income - y_l[:]))
+    T_m = np.maximum(0,par.tau_m*(personal_income - y_m[:]))
     T_u = np.maximum(0,np.minimum(par.tau_u,par.tau_max)*(personal_income - par.y_low_u))
         
     # return posttax income

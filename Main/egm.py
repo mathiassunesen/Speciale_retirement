@@ -48,7 +48,7 @@ def solve_bellman(t,ma,st,ra,D,sol_c,sol_m,sol_v,sol_v_plus_raw,sol_avg_marg_u_p
         # c. upper envelope
         envelope(a,m_raw,c_raw,v_raw,m,     # input
                  c[d],v[d],                 # output
-                 t+1,d,ma,st,par)           # args for utility function  
+                 d,ma,st,par)               # args for utility function  
 
 
 ###############################
@@ -86,4 +86,4 @@ def solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
             # d. upper envelope
             envelope_c(a,m_raw,c_raw,v_raw[d],m,        # input
                        c[d],v[d],                       # output
-                       t+1,ad,d_h,d_w,st_h,st_w,par)    # args for utility function  
+                       d_h,d_w,st_h,st_w,par)           # args for utility function  

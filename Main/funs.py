@@ -31,32 +31,36 @@ def GaussHermite_lognorm(var,n):
 def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women):
     """ GaussHermite nodes and weights for correlated lognormal shocks """    
 
-    x1,w1 = GaussHermite(Nxi_women)
-    x2,w2 = GaussHermite(Nxi_men)
+    if np.sum(var) == 0 and cov == 0 and Nxi_men == 1 and Nxi_women == 1:
+        return np.array([np.array([1.0]),np.array([1.0])]),np.array([1.0])
+    else:
 
-    x1 = np.sqrt(2)*x1
-    w1 = w1/np.sqrt(np.pi)
-    x2 = np.sqrt(2)*x2
-    w2 = w2/np.sqrt(np.pi) 
-    
-    mean1 = -0.5*var[0]
-    mean2 = -0.5*var[1]
+        x1,w1 = GaussHermite(Nxi_women)
+        x2,w2 = GaussHermite(Nxi_men)
 
-    cov_matrix = np.array(([var[0], cov], [cov, var[1]]))
-    chol = np.linalg.cholesky(cov_matrix)
-    assert(np.allclose(cov_matrix[:], chol @ np.transpose(chol)))
+        x1 = np.sqrt(2)*x1
+        w1 = w1/np.sqrt(np.pi)
+        x2 = np.sqrt(2)*x2
+        w2 = w2/np.sqrt(np.pi) 
+        
+        mean1 = -0.5*var[0]
+        mean2 = -0.5*var[1]
 
-    x1,x2 = np.meshgrid(x1,x2,indexing='ij')
-    w1,w2 = np.meshgrid(w1,w2,indexing='ij')    
-    x1,x2 = x1.ravel(),x2.ravel()
-    w1,w2 = w1.ravel(),w2.ravel()
+        cov_matrix = np.array(([var[0], cov], [cov, var[1]]))
+        chol = np.linalg.cholesky(cov_matrix)
+        assert(np.allclose(cov_matrix[:], chol @ np.transpose(chol)))
 
-    x2 = np.exp(chol[1,0]*x1 + chol[1,1]*x2 + mean2)
-    x1 = np.exp(chol[0,0]*x1 + mean1)
-    w = w1*w2
-    assert(np.allclose(np.sum(w),1))
+        x1,x2 = np.meshgrid(x1,x2,indexing='ij')
+        w1,w2 = np.meshgrid(w1,w2,indexing='ij')    
+        x1,x2 = x1.ravel(),x2.ravel()
+        w1,w2 = w1.ravel(),w2.ravel()
 
-    return np.array([x1,x2]),w  # women first
+        x2 = np.exp(chol[1,0]*x1 + chol[1,1]*x2 + mean2)
+        x1 = np.exp(chol[0,0]*x1 + mean1)
+        w = w1*w2
+        assert(np.allclose(np.sum(w),1))
+
+        return np.array([x1,x2]),w  # women first
 
 
 @njit(parallel=True)

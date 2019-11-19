@@ -25,7 +25,7 @@ def solve(t,ma,st,ra,d,sol_c,sol_m,sol_v,par):
             c[i] = cons
         else:
             c[i] = m[i]
-        v[i] = utility.func(c[i],t,d,ma,st,par) + par.beta*par.gamma*(m[i]-c[i])
+        v[i] = utility.func(c[i],d,ma,st,par) + par.beta*par.gamma*(m[i]-c[i])
 
 
 @njit(parallel=True)
@@ -49,7 +49,7 @@ def solve_c(t,ad,st_h,st_w,ra_h,ra_w,d_h,d_w,sol_c,sol_m,sol_v,par):
             c[i] = cons
         else:
             c[i] = m[i]
-        v[i] = utility.func_c(c[i],t,ad,d_h,d_w,st_h,st_w,par) + par.beta*par.gamma*(m[i]-c[i])
+        v[i] = utility.func_c(c[i],d_h,d_w,st_h,st_w,par) + par.beta*par.gamma*(m[i]-c[i])
 
     
 

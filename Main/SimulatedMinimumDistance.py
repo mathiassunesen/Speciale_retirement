@@ -5,6 +5,8 @@ import time
 import scipy as sci
 from scipy.optimize import minimize
 import pickle
+import itertools
+import warnings
 
 # local modules
 import transitions
@@ -51,24 +53,27 @@ class SimulatedMinimumDistance():
                 for p in range(len(theta)):
                     print(f' {self.est_par[p]}={theta[p]:2.4f}', end='')
 
-        # 1. update parameters 
-        for i in range(len(self.est_par)):
-            setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
-            if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
-                setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
+        idx = self.est_par.index('sigma_eta')
+        if theta[idx] < 0:
+            self.obj = np.inf
+        else:
 
-        # 2. solve model with current parameters
-        if self.recompute:
-            self.model.recompute()
-        self.model.solve()
+            # 1. update parameters 
+            for i in range(len(self.est_par)):
+                setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
+                if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
+                    setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
 
-        # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
-        self.model.simulate()
-        self.mom_sim = self.mom_fun(self.model.sim,*args)
+            # 2. solve model with current parameters
+            self.model.solve(recompute=self.recompute)
 
-        # 4. calculate objective function and return it
-        diff = self.mom_data - self.mom_sim
-        self.obj  = ((np.transpose(diff) @ W) @ diff)
+            # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
+            self.model.simulate()
+            self.mom_sim = self.mom_fun(self.model.sim,*args)
+
+            # 4. calculate objective function and return it
+            diff = self.mom_data - self.mom_sim
+            self.obj  = ((np.transpose(diff) @ W) @ diff)
 
         if self.print_iter[0]:
             if self.iter % self.print_iter[1] == 0:
@@ -98,6 +103,10 @@ class SimulatedMinimumDistance():
         # preallocate
         theta = np.nan*np.zeros(np.array(theta0).shape)
         obj = np.nan*np.zeros(len(theta0))
+
+        # options
+        self.options['xatol'] = 0.001
+        self.options['fatol'] = 0.001        
             
         for p in range(len(theta0)):
                 
@@ -128,6 +137,8 @@ class SimulatedMinimumDistance():
                 print('')
                     
         # final estimation
+        self.options['xatol'] = 0.0001
+        self.options['fatol'] = 0.0001
         idx = np.argmin(obj)
         self.estimate(theta[idx],weight)
         toc_total = time.time()
@@ -275,39 +286,42 @@ def MomFunSingle(sim,par,calc='mean'):
             mom[:,i] = np.nanstd(probs[idx,:],axis=0)
     return mom.ravel() # collapse across rows (C-order)
 
-def MomFunCouple(sim,par,calc='mean'):
+def MomFunCouple(sim,par,calc='mean',ages=[58,68]):
     """ compute moments for couple model """    
     
     # unpack
     states = sim.states
     AD = states[:,0]
+    ADx = np.unique(AD)
     ST_h = sim.states[:,1]    
     ST_w = sim.states[:,2]
-    ADx = np.unique(AD)
-    STx = np.unique(sim.states[1:],axis=0) # exclude AD at first entry
-    probs_h = sim.probs[:,1+par.ad_min:par.simT+par.ad_max,1]
-    probs_w = sim.probs[:,1+par.ad_min:par.simT+par.ad_max,0]
-    
+    iterator = np.array(list(itertools.product([0, 1, 2, 3], repeat=2)))
+    x = np.arange(ages[0], ages[1]+1)    
+    probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
+    probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]    
+
     # initialize
-    T = par.simT-1    
-    N = len(ADx)+len(STx)
+    T = len(x)
+    N = len(ADx)+len(iterator)
     mom = np.zeros((2,T,N))
 
     # 1. across AD
     for i in range(len(ADx)):
         ad = ADx[i]
         idx = np.nonzero((AD==ad))[0]
-        if calc == 'mean':
-            mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
-            mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
-        elif calc == 'std':
-            mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
-            mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)            
+        with warnings.catch_warnings(): # ignore this specific warning
+            warnings.simplefilter("ignore", category=RuntimeWarning)        
+            if calc == 'mean':
+                mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
+                mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
+            elif calc == 'std':
+                mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
+                mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)            
 
     # 2. across couple states
-    for i in range(len(STx)):
-        st_h = states[i,1]
-        st_w = states[i,2]
+    for i in range(len(iterator)):
+        st_h = iterator[i,0]
+        st_w = iterator[i,1]
         idx = np.nonzero((ST_h==st_h) & (ST_w==st_w))[0]
         j = i + len(ADx)
         if calc == 'mean':

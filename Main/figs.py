@@ -66,26 +66,52 @@ def MyPlot(G,xlim=None,ylim=None,save=True,**kwargs):
     fig.tight_layout()
     
     if save:
-        return fig
+        return fig 
 
+def LaborSupply(LS,ages):
+    hs = LS['d'][1]['hs'][0:15]-LS['d'][0]['hs'][0:15]
+    ls = LS['d'][1]['ls'][0:15]-LS['d'][0]['ls'][0:15]
+    assert np.allclose(hs+ls,LS['d'][1]['base'][0:15]-LS['d'][0]['base'][0:15])
+    return hs,ls,np.arange(ages[0],ages[1]+1)
 
-def plot_exp(x,Y,ax,labels,xlab,ylab):
-    """ plot counterfactual policy simulations/experiments
-    
-        Args:
-            x (1d array)
-            Y (list of 1d arrays)
-    """
+def LS_bar(LS,ages,fs=17,ls=12,yticks=[0,1000,2000,3000,4000],save=True):
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    HS,LS,x = LaborSupply(LS,ages)
+    ax.bar(x,HS, label='High skilled')
+    ax.bar(x,LS,bottom=HS, label='Low skilled')
+    ax.legend(fontsize=ls)
+    ax.set_xlabel('Age',fontsize=fs)
+    ax.set_ylabel('Change in labor supply',fontsize=fs)
+    #ax.set_yticks([0, 1000, 2000, 3000, 4000])
+    ax.tick_params(axis='both', which='major', labelsize=ls)  
+    fig.tight_layout()     
+
+    if save:
+        return fig      
+
+def Surplus(G):
+    g = np.array(G['GovS'])
+    return (g[1:]-g[0])#/abs(g[0])*100
+
+def GovS_plot(x,Y,labels,xlab='Deduction (100.000 DKR)',ylab='Pct. change in Surplus',lw=3,fs=17,ls=12,save=True):
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
 
     # plot
     for i in range(len(Y)):
-        ax.plot(x,Y[i], label=labels[i], linewidth=lw, linestyle=line_spec[i], color=colors[i], marker='o')    
+        g = Surplus(Y[i])
+        ax.plot(x,g, linewidth=lw, label=labels[i], marker='o')    
     
     # details
     ax.set_xlabel(xlab, fontsize=fs)
     ax.set_ylabel(ylab, fontsize=fs)    
-    ax.legend(fontsize=fs-5)
-    ax.tick_params(axis='both', which='major', labelsize=fs)
+    ax.legend(fontsize=ls)
+    ax.tick_params(axis='both', which='major', labelsize=ls)
+    fig.tight_layout()
+
+    if save:
+        return fig
 
 def policy(model,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0,top=False):
 
@@ -124,6 +150,63 @@ def policy(model,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0,top=F
                         label_lst.append(lab)
     # return
     return {'y': y_lst, 'x': x, 'label': label_lst, 'xlabel': '$m_t$', 'ylabel': '${}$'.format(solvardict[var])}
+
+def policy_c(model,ax,var,T,AD,ST_h,ST_w,RA_h,RA_w,D_h,D_w,label=False,xlim=None,ylim=None,bottom=0):
+    """ plot either consumption or value functions for couples """
+
+    # unpack
+    sol = model.sol
+    par = model.par
+    solvardict = dict([('c','C_t'),
+                       ('v','v_t')])    
+    m = sol.m
+    ad_min = par.ad_min
+    
+    # loop through options
+    for t in T:
+        for ad in AD:
+            ad = ad + ad_min
+            for st_h in ST_h:
+                for st_w in ST_w:
+                    for ra_h in RA_h:
+                        for ra_w in RA_w:
+                            for d_h in D_h:
+                                for d_w in D_w:
+
+                                    if d_h == 1:
+                                        ra_xh = transitions.ra_look_up(t,st_h,ra_h,d_h,par)
+                                    else:
+                                        ra_xh = ra_h
+                                    if d_w == 1:
+                                        ra_xw = transitions.ra_look_up(t,st_w,ra_w,d_w,par)
+                                    else:
+                                        ra_xw = ra_w
+
+                                    d = transitions.d_c(d_h,d_w)
+                                    x = m[bottom:]
+                                    y = getattr(sol,var)[t,ad,st_h,st_w,ra_xh,ra_xw,d,bottom:]
+                                    
+                                    if label == False:
+                                        ax.plot(x,y)
+                                    else:
+                                        # if 't' in label and 'ra' in label and len(label) == 2:
+                                        #     lab = f"$(t = {transitions.age(t,par)}, ra = {ra})$"
+                                        if 't' in label and len(label) == 1:
+                                            lab = f"$(t = {transitions.age(t,par)})$"
+                                        elif 'd' in label and len(label) == 1:
+                                            lab = f"$(d^h = {d_h}, d^w = {d_w})$"
+                                        ax.plot(x,y,label=lab)
+
+    # details
+    if xlim != None:
+        ax.set_xlim(xlim)
+    if ylim != None:
+        ax.set_ylim(ylim)
+    if label:
+        ax.legend()
+    ax.grid(True)
+    ax.set_xlabel('$m_t$')
+    ax.set_ylabel('${}$'.format(solvardict[var]))
 
 def choice_probs(model,ma,ST=[0,1,2,3],ages=[57,67]):
 
@@ -214,40 +297,50 @@ def choice_probs_c(model,ma,ST=[0,1,2,3],ad=0,ages=[57,67]):
         x = ages+1
     return {'y': probs, 'x': x, 'xticks': x, 'xlabel': 'Age', 'ylabel': 'Retirement probability', 'label': label}
 
-def lifecycle(model,var,MA=[0],ST=[0,1,2,3],ages=[57,68]):
+def lifecycle(model,var,MA=[0],ST=[0,1,2,3],ages=[57,68],calc='mean'):
     """ plot lifecycle """
 
-    # unpack
-    sim = model.sim
-    par = model.par
+    if var == 'probs':
+        return retirement_probs(model,MA,ST,ages)
+    else:
 
-    # indices
-    MAx = sim.states[:,0]
-    STx = sim.states[:,1]
-    idx = np.nonzero((np.isin(MAx,MA) & np.isin(STx,ST)))[0]
-    
-    # figure
-    simvardict = dict([('m','$m_t$'),
-                  ('c','$C_t$'),
-                  ('a','$a_t$'),
-                  ('d','$d_t$'),
-                  ('alive','$alive_t$')])
+        # unpack
+        sim = model.sim
+        par = model.par
 
-    x = np.arange(ages[0], ages[1]+1)
-    simdata = getattr(sim,var)[:,transitions.inv_age(x,par)]
-    y = simdata[idx,:]
-    with warnings.catch_warnings(): # ignore this specific warning
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        y = np.nanmean(y,axis=0)
+        # indices
+        MAx = sim.states[:,0]
+        STx = sim.states[:,1]
+        idx = np.nonzero((np.isin(MAx,MA) & np.isin(STx,ST)))[0]
+        
+        # figure
+        simvardict = dict([('m','$m_t$'),
+                    ('c','$C_t$'),
+                    ('a','$a_t$'),
+                    ('GovS', '$G_t'),
+                    ('d','$d_t$'),
+                    ('alive','$alive_t$')])
 
-    # return
-    if var in ('m', 'c', 'a'):
-        ylabel = '100.000 DKR'
-    if var in ('d', 'alive'):
-        ylabel = 'Share'
-    return {'y': [y], 'x': x, 'xlabel': 'Age', 'ylabel': ylabel, 'label': [simvardict[var]]}
+        x = np.arange(ages[0], ages[1]+1)
+        simdata = getattr(sim,var)[:,transitions.inv_age(x,par)]
+        y = simdata[idx,:]
+        with warnings.catch_warnings(): # ignore this specific warning
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            if calc == 'mean':
+                y = np.nanmean(y,axis=0)
+            elif calc == 'sum':
+                y = np.nansum(y,axis=0)
+            elif calc == 'total_sum':
+                y = np.nansum(y)
 
-def lifecycle_c(model,var,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[57,68]):
+        # return
+        if var in ('m', 'c', 'a', 'GovS'):
+            ylabel = '100.000 DKR'
+        if var in ('d', 'alive'):
+            ylabel = 'Share'
+        return {'y': [y], 'x': x, 'xlabel': 'Age', 'ylabel': ylabel, 'label': [simvardict[var]]}
+
+def lifecycle_c(model,var,MA=[0,1],AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[57,68],calc='mean'):
     """ plot lifecycle for couples"""
 
     # unpack
@@ -264,18 +357,34 @@ def lifecycle_c(model,var,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,
     simvardict = dict([('m','$m_t$'),
                   ('c','$C_t$'),
                   ('a','$a_t$'),
+                  ('GovS','$G_t$'),
                   ('d','$d_t$'),
                   ('alive','$alive_t$')])
 
     x = np.arange(ages[0], ages[1]+1)
-    simdata = getattr(sim,var)[:,transitions.inv_age(x,par)]
-    y = simdata[idx,:]
+    axis = 0
+    if var in ('m', 'c', 'a', 'GovS'):
+        simdata = getattr(sim,var)[:,transitions.inv_age(x,par)]
+    elif var in ('d', 'alive'):
+        simdata = getattr(sim,var)[:,transitions.inv_age(x,par)+par.ad_min]
+        simdata = simdata[:,:,MA]
+        if len(MA)>1:
+            axis = (0,2)
+    
+    y = simdata[idx]
     with warnings.catch_warnings(): # ignore this specific warning
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        y = np.nanmean(y,axis=0)
+        if calc == 'mean':
+            y = np.nanmean(y,axis=axis)
+            y = y.ravel()
+        elif calc == 'sum':
+            y = np.nansum(y,axis=axis)
+            y = y.ravel()
+        elif calc == 'total_sum':
+            y = np.nansum(y)
     
     # return
-    if var in ('m', 'c', 'a'):
+    if var in ('m', 'c', 'a', 'GovS'):
         ylabel = '100.000 DKR'
     if var in ('d', 'alive'):
         ylabel = 'Share'
@@ -319,106 +428,42 @@ def retirement_probs_c(model,ma,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[
     x = np.arange(ages[0], ages[1]+1)
     y = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,ma]  # ages
     y = y[idx,:]                                               # states
-    y = np.nanmean(y,axis=0)    
+    with warnings.catch_warnings(): # ignore this specific warning
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        y = np.nanmean(y,axis=0)    
     
     # return
     return {'y': [y], 'x': x, 'xticks': x, 'xlabel': 'Age', 'ylabel': 'Retirement probability', 'label': ['Predicted']}
 
-def policy_c(model,ax,var,T,AD,ST_h,ST_w,RA_h,RA_w,D_h,D_w,label=False,xlim=None,ylim=None,bottom=0):
-    """ plot either consumption or value functions for couples """
-
-    # unpack
-    sol = model.sol
-    par = model.par
-    solvardict = dict([('c','C_t'),
-                       ('v','v_t')])    
-    m = sol.m
-    ad_min = par.ad_min
-    
-    # loop through options
-    for t in T:
-        for ad in AD:
-            ad = ad + ad_min
-            for st_h in ST_h:
-                for st_w in ST_w:
-                    for ra_h in RA_h:
-                        for ra_w in RA_w:
-                            for d_h in D_h:
-                                for d_w in D_w:
-
-                                    if d_h == 1:
-                                        ra_xh = transitions.ra_look_up(t,st_h,ra_h,d_h,par)
-                                    else:
-                                        ra_xh = ra_h
-                                    if d_w == 1:
-                                        ra_xw = transitions.ra_look_up(t,st_w,ra_w,d_w,par)
-                                    else:
-                                        ra_xw = ra_w
-
-                                    d = transitions.d_c(d_h,d_w)
-                                    x = m[bottom:]
-                                    y = getattr(sol,var)[t,ad,st_h,st_w,ra_xh,ra_xw,d,bottom:]
-                                    
-                                    if label == False:
-                                        ax.plot(x,y)
-                                    else:
-                                        # if 't' in label and 'ra' in label and len(label) == 2:
-                                        #     lab = f"$(t = {transitions.age(t,par)}, ra = {ra})$"
-                                        if 't' in label and len(label) == 1:
-                                            lab = f"$(t = {transitions.age(t,par)})$"
-                                        elif 'd' in label and len(label) == 1:
-                                            lab = f"$(d^h = {d_h}, d^w = {d_w})$"
-                                        ax.plot(x,y,label=lab)
-
-    # details
-    if xlim != None:
-        ax.set_xlim(xlim)
-    if ylim != None:
-        ax.set_ylim(ylim)
-    if label:
-        ax.legend()
-    ax.grid(True)
-    ax.set_xlabel('$m_t$')
-    ax.set_ylabel('${}$'.format(solvardict[var]))
-
-def policy_simulation(model,var,MA=[0,1],ST=[0,1,2,3],ages=[57,110]):
+def policy_simulation(model,var,ages):
     """ policy simulation for singles"""
 
-    # unpack
-    sim = model.sim
-    par = model.par
+    if var == 'd':
+        return {'hs': lifecycle(model,var=var,MA=[0,1],ST=[1,3],ages=ages,calc='sum')['y'][0],
+                'base': lifecycle(model,var=var,MA=[0,1],ST=[0,1,2,3],ages=ages,calc='sum')['y'][0],
+                'ls': lifecycle(model,var=var,MA=[0,1],ST=[0,2],ages=ages,calc='sum')['y'][0]}
 
-    # indices
-    MAx = sim.states[:,0]
-    STx = sim.states[:,1]
-    idx = np.nonzero(((np.isin(MAx,MA) & (np.isin(STx,ST)))))[0]
-    x = np.arange(ages[0], ages[1]+1)
-    
-    # policy
-    y = getattr(sim,var)[:,transitions.inv_age(x,par)]  # ages
-    y = y[idx,:]                                        # states
-    return np.nansum(y)
+    if var == 'GovS':
+        return lifecycle(model,var=var,MA=[0,1],ST=[0,1,2,3],ages=ages,calc='total_sum')['y'][0]
 
-def policy_simulation_c(model,var,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[57,110]):
+def policy_simulation_c(model,var,ages):
     """ policy simulation for couples"""
 
-    # unpack
-    sim = model.sim
-    par = model.par
+    if var == 'd':
+        return {'hs': 
+                lifecycle_c(model,var=var,MA=[0],ST_w=[1,3],ages=ages,calc='sum')['y'][0] + 
+                lifecycle_c(model,var=var,MA=[1],ST_h=[1,3],ages=ages,calc='sum')['y'][0],
+                'base': 
+                lifecycle_c(model,var=var,MA=[0,1],ages=ages,calc='sum')['y'][0],        
+                'ls': 
+                lifecycle_c(model,var=var,MA=[0],ST_w=[0,2],ages=ages,calc='sum')['y'][0] + 
+                lifecycle_c(model,var=var,MA=[1],ST_h=[0,2],ages=ages,calc='sum')['y'][0]
+        }
 
-    # indices
-    ADx = sim.states[:,0]
-    STx_h = sim.states[:,1]
-    STx_w = sim.states[:,2]
-    idx = np.nonzero((np.isin(ADx,AD) & (np.isin(STx_h,ST_h) & (np.isin(STx_w,ST_w)))))[0]
-    x = np.arange(ages[0], ages[1]+1)
-    
-    # policy
-    y = getattr(sim,var)[:,transitions.inv_age(x,par)]  # ages
-    y = y[idx,:]                                        # states
-    return np.nansum(y)
+    if var == 'GovS':
+        return lifecycle_c(model,var=var,MA=[0,1],ages=ages,calc='total_sum')['y'][0]
 
-def resolve(model,vars,recompute=True,accuracy=False,tax=True,MA=[0,1],ST=[0,1,2,3],ages=[57,110],**kwargs):
+def resolve(model,vars,recompute=True,accuracy=False,tax=True,ages=[57,77],**kwargs):
     
     # dict
     store = {}
@@ -440,14 +485,14 @@ def resolve(model,vars,recompute=True,accuracy=False,tax=True,MA=[0,1],ST=[0,1,2
 
         # policy
         for var in vars:
-            y = policy_simulation(model,var=var,MA=MA,ST=ST,ages=ages)
+            y = policy_simulation(model,var=var,ages=ages)
             store[var].append(y)
 
     # return
     return store 
 
 def resolve_c(model,vars,recompute=True,accuracy=False,tax=True,
-              AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[57,110],**kwargs):
+              AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[57,77],**kwargs):
 
     # dict
     store = {}
@@ -470,7 +515,7 @@ def resolve_c(model,vars,recompute=True,accuracy=False,tax=True,
 
         # policy
         for var in vars:
-            y = policy_simulation_c(model,var=var,AD=AD,ST_h=ST_h,ST_w=ST_w,ages=ages)
+            y = policy_simulation_c(model,var=var,ages=ages)
             store[var].append(y)
 
     # return

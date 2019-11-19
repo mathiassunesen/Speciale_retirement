@@ -111,12 +111,12 @@ def update_m(t,ma,st,ra,ds,m,a,sim,par,idx,GovS,ad=0,ad_min=0):
         # oap
         if t >= par.T_oap:
             pre = transitions.oap_pretax(t,par,i=0)[0]*shocks
-            inc = transitions.posttax(t,par,ds,inc=0*shocks,pens=pre,spouse_inc=np.inf*shocks)  # set spouse inc to inf, so when we look up for couples (who are now singles) they can't share deduction
+            inc = transitions.posttax(t,par,ds,inc=pre,inc_s=np.inf*shocks)  # set spouse inc to inf, so when we look up for couples (who are now singles) they can't share deduction
 
         # erp
         elif par.T_erp <= t < par.T_oap:
             pre = transitions.erp_pretax(t,ma,st,ra,par)[0]*shocks
-            inc = transitions.posttax(t,par,ds,inc=0*shocks,pens=pre,spouse_inc=np.inf*shocks)
+            inc = transitions.posttax(t,par,ds,inc=pre,inc_s=np.inf*shocks)
 
         else:
             pre = np.zeros(len(idx))
@@ -357,8 +357,8 @@ def update_m_c(t,ad,st_h,st_w,ra_h,ra_w,d_h,d_w,m,sim,par,idx,GovS):
             pre_w[:] = transitions.oap_pretax(t+ad,par,i=1,y=pre_w,y_spouse=pre_h)[0]
         elif t+ad >= par.T_erp:
             pre_w[:] = transitions.erp_pretax(t+ad,0,st_w,ra_w,par)[0]
-        inc = (transitions.posttax(t,par,d_h,inc=pre_h,pens=np.zeros(pre_h.shape),spouse_inc=pre_w) + 
-               transitions.posttax(t+ad,par,d_w,inc=np.zeros(pre_w.shape),pens=pre_w,spouse_inc=pre_h))
+        inc = (transitions.posttax(t,par,d_h,inc=pre_h,inc_s=pre_w,d_s=d_w,t_s=t+ad) + 
+               transitions.posttax(t+ad,par,d_w,inc=pre_w,inc_s=pre_h,d_s=d_h,t_s=t))
 
     # wife working
     elif d_h == 0 and d_w == 1:
@@ -368,8 +368,8 @@ def update_m_c(t,ad,st_h,st_w,ra_h,ra_w,d_h,d_w,m,sim,par,idx,GovS):
             pre_h[:] = transitions.oap_pretax(t,par,i=1,y=pre_h,y_spouse=pre_w)[0]
         elif t >= par.T_erp:
             pre_h[:] = transitions.erp_pretax(t,1,st_h,ra_h,par)[0]
-        inc = (transitions.posttax(t+ad,par,d_w,inc=pre_w,pens=np.zeros(pre_w.shape),spouse_inc=pre_h) + 
-               transitions.posttax(t,par,d_h,inc=np.zeros(pre_h.shape),pens=pre_h,spouse_inc=pre_w))
+        inc = (transitions.posttax(t+ad,par,d_w,inc=pre_w,inc_s=pre_h,d_s=d_h,t_s=t) + 
+               transitions.posttax(t,par,d_h,inc=pre_h,inc_s=pre_w,d_s=d_w,t_s=t+ad))
 
     # both retired
     elif d_h == 0 and d_w == 0:
@@ -395,8 +395,8 @@ def update_m_c(t,ad,st_h,st_w,ra_h,ra_w,d_h,d_w,m,sim,par,idx,GovS):
             pre_w[:] = transitions.erp_pretax(t+ad,0,st_w,ra_w,par)[0]
         
         # post tax
-        inc = (transitions.posttax(t,par,d_h,inc=np.zeros(len(idx)),pens=pre_h,spouse_inc=pre_w) + 
-               transitions.posttax(t+ad,par,d_w,inc=np.zeros(len(idx)),pens=pre_w,spouse_inc=pre_h))
+        inc = (transitions.posttax(t,par,d_h,inc=pre_h,inc_s=pre_w,d_s=d_w,t_s=t+ad) + 
+               transitions.posttax(t+ad,par,d_w,inc=pre_w,inc_s=pre_h,d_s=d_h,t_s=t))
 
     # update m
     fill_arr(m[:,t],idx,par.R*a[:] + inc[:])
