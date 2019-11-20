@@ -68,22 +68,23 @@ def MyPlot(G,xlim=None,ylim=None,save=True,**kwargs):
     if save:
         return fig 
 
-def LaborSupply(LS,ages):
-    hs = LS['d'][1]['hs'][0:15]-LS['d'][0]['hs'][0:15]
-    ls = LS['d'][1]['ls'][0:15]-LS['d'][0]['ls'][0:15]
-    assert np.allclose(hs+ls,LS['d'][1]['base'][0:15]-LS['d'][0]['base'][0:15])
-    return hs,ls,np.arange(ages[0],ages[1]+1)
+def LaborSupply(LS,ages,start_age):
+    x = np.arange(ages[0], ages[1]+1)
+    x_inv = x - start_age
+    hs = LS['d'][1]['hs'][x_inv]-LS['d'][0]['hs'][x_inv]
+    ls = LS['d'][1]['ls'][x_inv]-LS['d'][0]['ls'][x_inv]
+    assert np.allclose(hs+ls,LS['d'][1]['base'][x_inv]-LS['d'][0]['base'][x_inv])
+    return hs,ls,x
 
-def LS_bar(LS,ages,fs=17,ls=12,yticks=[0,1000,2000,3000,4000],save=True):
+def LS_bar(LS,start_age,ages,fs=17,ls=12,save=True):
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
-    HS,LS,x = LaborSupply(LS,ages)
+    HS,LS,x = LaborSupply(LS,ages,start_age)
     ax.bar(x,HS, label='High skilled')
     ax.bar(x,LS,bottom=HS, label='Low skilled')
     ax.legend(fontsize=ls)
     ax.set_xlabel('Age',fontsize=fs)
     ax.set_ylabel('Change in labor supply',fontsize=fs)
-    #ax.set_yticks([0, 1000, 2000, 3000, 4000])
     ax.tick_params(axis='both', which='major', labelsize=ls)  
     fig.tight_layout()     
 
@@ -435,6 +436,22 @@ def retirement_probs_c(model,ma,AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[
     # return
     return {'y': [y], 'x': x, 'xticks': x, 'xlabel': 'Age', 'ylabel': 'Retirement probability', 'label': ['Predicted']}
 
+def RetAge_S(model,MA=[0,1],ST=[0,1,2,3]):
+    
+    par = model.par
+    sim = model.sim
+    
+    # individuals not dying before retiring and selected group
+    MAx = sim.states[:,0]
+    STx = sim.states[:,1]
+    idx = np.nonzero((np.any(sim.d==0,axis=1)) & (np.isin(MAx,MA)) & (np.isin(STx,ST)))[0]
+    
+    # distribution of retirement ages
+    age = np.nanmax(np.arange(par.start_T,par.start_T+par.simT)*sim.d[idx],axis=1)+1
+
+    # return
+    return age
+
 def policy_simulation(model,var,ages):
     """ policy simulation for singles"""
 
@@ -445,6 +462,11 @@ def policy_simulation(model,var,ages):
 
     if var == 'GovS':
         return lifecycle(model,var=var,MA=[0,1],ST=[0,1,2,3],ages=ages,calc='total_sum')['y'][0]
+
+    if var == 'RetAge':
+        return {'hs': np.mean(RetAge_S(model,ST=[1,3])),
+                'base': np.mean(RetAge_S(model)),
+                'ls': np.mean(RetAge_S(model,ST=[0,2]))}
 
 def policy_simulation_c(model,var,ages):
     """ policy simulation for couples"""
@@ -463,7 +485,7 @@ def policy_simulation_c(model,var,ages):
     if var == 'GovS':
         return lifecycle_c(model,var=var,MA=[0,1],ages=ages,calc='total_sum')['y'][0]
 
-def resolve(model,vars,recompute=True,accuracy=False,tax=True,ages=[57,77],**kwargs):
+def resolve(model,vars,recompute=True,accuracy=False,tax=True,ages=[57,110],**kwargs):
     
     # dict
     store = {}
@@ -492,7 +514,7 @@ def resolve(model,vars,recompute=True,accuracy=False,tax=True,ages=[57,77],**kwa
     return store 
 
 def resolve_c(model,vars,recompute=True,accuracy=False,tax=True,
-              AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[57,77],**kwargs):
+              AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[53,110],**kwargs):
 
     # dict
     store = {}

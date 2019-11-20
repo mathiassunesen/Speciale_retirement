@@ -66,7 +66,8 @@ class RetirementClass(ModelClass):
             single_kwargs['reg_labor_male'] = self.par.reg_labor_male
             single_kwargs['reg_labor_female'] = self.par.reg_labor_female
             single_kwargs['g_adjust'] = self.par.g_adjust
-            single_kwargs['priv_pension'] = self.par.priv_pension
+            single_kwargs['priv_pension_female'] = self.par.priv_pension_female
+            single_kwargs['priv_pension_male'] = self.par.priv_pension_male            
             single_kwargs['simN'] = 100   # we don't need sim so we don't want to waste memory
             single_kwargs['simT'] = 1
             self.Single = RetirementClass(name=name+'_single',year=year,**single_kwargs)
@@ -153,7 +154,8 @@ class RetirementClass(ModelClass):
 
             # private pension
             self.par.g_adjust = 0.75
-            self.par.priv_pension =         np.array((728*1000, 1236*1000))/self.par.denom  # order is: female, male
+            self.par.priv_pension_female =  728*1000/self.par.denom
+            self.par.priv_pension_male =    1236*1000/self.par.denom            
 
         else:
 
@@ -163,7 +165,9 @@ class RetirementClass(ModelClass):
             
             # private pension
             self.par.g_adjust = 0.75
-            self.par.priv_pension =         np.array((744*1000, 682*1000))/self.par.denom   # order is: female, male
+            self.par.priv_pension_female =  744*1000/self.par.denom
+            self.par.priv_pension_male =    682*1000/self.par.denom            
+
 
         # tax and retirement system
         setup.TaxSystem(self)

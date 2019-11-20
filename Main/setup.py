@@ -66,7 +66,8 @@ def single_lists():
             ('reg_labor_male',double[:]),
             ('reg_labor_female',double[:]),
             ('g_adjust',double),
-            ('priv_pension',double[:]),
+            ('priv_pension_female',double),
+            ('priv_pension_male',double),            
 
             # tax system
             ('IRA_tax',double),
@@ -117,7 +118,7 @@ def single_lists():
             ('xi',double[:,:]),
             ('xi_w',double[:,:]),
 
-            # precompute
+            # precompute            
             ('pension_female',double[:]),
             ('pension_male',double[:]),            
             ('survival',double[:,:,:]),
@@ -365,11 +366,33 @@ def init_sim(par,sim):
     state_and_m(par,sim,perc_num=10)
 
     if par.couple:
+
+        # setup
         init_sim_couple(par,sim)
-        init_sim_labor_couple(par,sim)
+        
+        # draws
+        Tr = min(par.simT,par.Tr)        
+        mu = -0.5*par.var      
+        Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))      
+        shocks_joint = np.exp(np.random.multivariate_normal(mu,Cov,size=(par.simN,min(par.simT,par.Tr))))
+        shocks_w = np.exp(np.random.normal(mu[0], np.sqrt(par.var[0]), size=(par.simN,Tr+par.ad_min)))
+        shocks_h = np.exp(np.random.normal(mu[1], np.sqrt(par.var[1]), size=(par.simN,Tr+par.ad_min)))            
+        
+        # income
+        init_sim_labor_couple(par,sim,shocks_joint,shocks_w,shocks_h)
+    
     else:
+
+        # setup
         init_sim_single(par,sim)
-        init_sim_labor_single(par,sim)        
+        
+        # draws
+        shocks = np.nan*np.zeros((par.simN,min(par.simT,par.Tr),2))
+        shocks[:,:,0] = np.exp(np.random.normal(-0.5*par.var[0], np.sqrt(par.var[0]), size=(par.simN,min(par.simT,par.Tr))))
+        shocks[:,:,1] = np.exp(np.random.normal(-0.5*par.var[1], np.sqrt(par.var[1]), size=(par.simN,min(par.simT,par.Tr))))        
+        
+        # income
+        init_sim_labor_single(par,sim,shocks)        
 
 def init_sim_single(par,sim):
     """ initialize simulation for single model """
@@ -406,7 +429,7 @@ def init_sim_single(par,sim):
                     alive[dead,t] = 0
 
 @njit(parallel=True)
-def init_sim_labor_single(par,sim):
+def init_sim_labor_single(par,sim,shocks):
     """ initialize income streams for single model """
 
     # states
@@ -416,13 +439,11 @@ def init_sim_labor_single(par,sim):
     STx = np.unique(ST)
 
     # initialize
+    np.random.seed(par.sim_seed+1)
     sim.labor_pre = np.nan*np.zeros((par.simN,min(par.simT,par.Tr),2))
     sim.labor_post = np.nan*np.zeros((par.simN,min(par.simT,par.Tr),2))  
     labor_pre = sim.labor_pre
     labor_post = sim.labor_post
-    shocks = np.nan*np.zeros((par.simN,min(par.simT,par.Tr),2))
-    shocks[:,:,0] = np.exp(np.random.normal(-0.5*par.var[0], np.sqrt(par.var[0]), size=(par.simN,min(par.simT,par.Tr))))
-    shocks[:,:,1] = np.exp(np.random.normal(-0.5*par.var[1], np.sqrt(par.var[1]), size=(par.simN,min(par.simT,par.Tr))))
 
     for t in range(par.simT):
         for ma in MAx:
@@ -445,9 +466,9 @@ def init_sim_couple(par,sim):
     extend = ad_min + ad_max    
     sim.choiceP = np.random.rand(par.simN,par.simT+extend,2)
     deadP = np.random.rand(par.simN,par.simT+extend,2)  
-    mu = -0.5*par.var      
-    Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))      
-    sim.shocks_joint = np.exp(np.random.multivariate_normal(mu,Cov,size=(par.simN,min(par.simT,par.Tr))))
+    # mu = -0.5*par.var      
+    # Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))      
+    # sim.shocks_joint = np.exp(np.random.multivariate_normal(mu,Cov,size=(par.simN,min(par.simT,par.Tr))))
             
     # precompute
     AD = sim.states[:,0]
@@ -484,7 +505,7 @@ def init_sim_couple(par,sim):
                         alive_h[dead_h,th_idx] = 0
 
 @njit(parallel=True)
-def init_sim_labor_couple(par,sim):
+def init_sim_labor_couple(par,sim,shocks_joint,shocks_w,shocks_h):
     """ initialize income streams in the couple model """
 
     # states
@@ -504,9 +525,9 @@ def init_sim_labor_couple(par,sim):
     Tr = min(par.simT,par.Tr)
     
     # shocks
-    shocks_joint = sim.shocks_joint
-    shocks_w = np.exp(np.random.normal(-0.5*par.var[0], np.sqrt(par.var[0]), size=(par.simN,Tr+ad_min)))
-    shocks_h = np.exp(np.random.normal(-0.5*par.var[1], np.sqrt(par.var[1]), size=(par.simN,Tr+ad_min)))    
+    # shocks_joint = sim.shocks_joint
+    # shocks_w = np.exp(np.random.normal(-0.5*par.var[0], np.sqrt(par.var[0]), size=(par.simN,Tr+ad_min)))
+    # shocks_h = np.exp(np.random.normal(-0.5*par.var[1], np.sqrt(par.var[1]), size=(par.simN,Tr+ad_min)))    
     
     # preallocate
     sim.labor_pre = np.nan*np.zeros((par.simN,Tr+extend,2))
@@ -633,6 +654,7 @@ def adjust_pension(par,sim):
 
     # unpack 
     states = sim.states
+    priv_pension = np.array([par.priv_pension_female, par.priv_pension_male])
     
     # adjust pension
     for ma in par.MA:
@@ -643,9 +665,9 @@ def adjust_pension(par,sim):
             
         # adjust private pension
         share = len(idx_high) / (len(idx_low) + len(idx_high))          # share of high skilled
-        pens_low = Xlow(par.g_adjust,share)*par.priv_pension[ma]
-        pens_high = Xhigh(par.g_adjust,share)*par.priv_pension[ma]
-        assert np.allclose(share*pens_high + (1-share)*pens_low, par.priv_pension[ma])
+        pens_low = Xlow(par.g_adjust,share)*priv_pension[ma]
+        pens_high = Xhigh(par.g_adjust,share)*priv_pension[ma]
+        assert np.allclose(share*pens_high + (1-share)*pens_low, priv_pension[ma])
 
         # store
         if ma == 0:

@@ -53,27 +53,27 @@ class SimulatedMinimumDistance():
                 for p in range(len(theta)):
                     print(f' {self.est_par[p]}={theta[p]:2.4f}', end='')
 
-        idx = self.est_par.index('sigma_eta')
-        if theta[idx] < 0:
-            self.obj = np.inf
-        else:
+        # idx = self.est_par.index('sigma_eta')
+        # if theta[idx] < 0:
+        #     self.obj = np.inf
+        # else:
 
-            # 1. update parameters 
-            for i in range(len(self.est_par)):
-                setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
-                if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
-                    setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
+        # 1. update parameters 
+        for i in range(len(self.est_par)):
+            setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
+            if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
+                setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
 
-            # 2. solve model with current parameters
-            self.model.solve(recompute=self.recompute)
+        # 2. solve model with current parameters
+        self.model.solve(recompute=self.recompute)
 
-            # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
-            self.model.simulate()
-            self.mom_sim = self.mom_fun(self.model.sim,*args)
+        # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
+        self.model.simulate()
+        self.mom_sim = self.mom_fun(self.model.sim,*args)
 
-            # 4. calculate objective function and return it
-            diff = self.mom_data - self.mom_sim
-            self.obj  = ((np.transpose(diff) @ W) @ diff)
+        # 4. calculate objective function and return it
+        diff = self.mom_data - self.mom_sim
+        self.obj  = ((np.transpose(diff) @ W) @ diff)
 
         if self.print_iter[0]:
             if self.iter % self.print_iter[1] == 0:
@@ -81,7 +81,7 @@ class SimulatedMinimumDistance():
                     print(f' -> {self.obj:2.4f}')
                 else:
                     print(f' -> {self.obj:2.4f}')
-        
+            
         return self.obj 
 
     def estimate(self,theta0,W,*args):
@@ -209,7 +209,7 @@ class SimulatedMinimumDistance():
             mom_backward = - self.mom_sim
 
             grad[:,p] = (mom_forward - mom_backward)/(2.0*step_now[p])
-
+        
         # 2. Sensitivity measures
         GW  = np.transpose(grad) @ W
         GWG = GW @ grad
@@ -218,12 +218,13 @@ class SimulatedMinimumDistance():
         # 3. Sensitivity measures
         self.sens1 = Lambda  # Andrews I, Gentzkow M, Shapiro JM: "Measuring the Sensitivity of Parameter Estimates to Estimation Moments." Quarterly Journal of Economics. 2017;132 (4) :1553-1592
 
+        # reset parameters
+        for p in range(len(self.est_par)):
+            setattr(self.model.par,self.est_par[p],theta[p])
+
         # DO my suggestion
         if fixed_par_str:
             # mine: calculate the numerical gradient wrt parameters in fixed_par
-            # update parameters
-            for p in range(len(self.est_par)):
-                setattr(self.model.par,self.est_par[p],theta[p])
 
             # change the estimation parameters to be the fixed ones
             est_par = self.est_par
@@ -251,15 +252,22 @@ class SimulatedMinimumDistance():
 
                 grad_g[:,p] = (mom_forward - mom_backward)/(2.0*step_now[p])
 
+            # reset parameters
+            for p in range(len(self.est_par)):
+                setattr(self.model.par,self.est_par[p],gamma[p])
             self.est_par = est_par
-            self.sens2 = Lambda @ grad_g
 
+            # sensitivity
+            self.sens2 = Lambda @ grad_g
             ela = np.empty((len(theta),len(gamma)))
+            semi_ela = np.empty((len(theta),len(gamma)))
             for t in range(len(theta)):
                 for g in range(len(gamma)):
                     ela[t,g] = self.sens2[t,g]*gamma[g]/theta[t]    
-            
+                    semi_ela[t,g] = self.sens2[t,g]/theta[t]
+
             self.sens2e = ela
+            self.sens2semi = semi_ela
 
 def MomFunSingle(sim,par,calc='mean'):
     """ compute moments for single model """
@@ -280,10 +288,12 @@ def MomFunSingle(sim,par,calc='mean'):
         ma = states[i,0]
         st = states[i,1]
         idx = np.nonzero((MA==ma) & (ST==st))[0]
-        if calc == 'mean': 
-            mom[:,i] = np.nanmean(probs[idx,:],axis=0)
-        elif calc == 'std':
-            mom[:,i] = np.nanstd(probs[idx,:],axis=0)
+        with warnings.catch_warnings(): # ignore this specific warning
+            warnings.simplefilter("ignore", category=RuntimeWarning)                
+            if calc == 'mean': 
+                mom[:,i] = np.nanmean(probs[idx,:],axis=0)
+            elif calc == 'std':
+                mom[:,i] = np.nanstd(probs[idx,:],axis=0)
     return mom.ravel() # collapse across rows (C-order)
 
 def MomFunCouple(sim,par,calc='mean',ages=[58,68]):
@@ -336,37 +346,47 @@ def MomFunCouple(sim,par,calc='mean',ages=[58,68]):
     mom[np.isnan(mom)] = 0  # set nan to zero
     return mom
 
-# def MomFunCouple(sim,par,std=False):
-#     """ compute moments for couple model """    
+def weight_matrix_single(std,scale_up=[60,61,62,63,64,65],fac_up=3,scale_down=[],fac_down=1,start_age=58):
     
-#     # unpack
-#     states = np.unique(sim.states,axis=0)
-#     AD = sim.states[:,0]
-#     ST_h = sim.states[:,1]    
-#     ST_w = sim.states[:,2]
-#     probs_h = sim.probs[:,1+par.ad_min:,1] # 1: means exclude age 57 (since first prob is at 58)
-#     probs_w = sim.probs[:,1+par.ad_min:,0]
+    # preallocate
+    std_inv = np.zeros(std.shape)
     
-#     # initialize
-#     T = probs_h.shape[1]
-#     N = len(states)
-#     mom = np.zeros((2,T,N))
+    # find all above zero
+    idx = np.nonzero(std>0)[0]
     
-#     # compute moments
-#     for i in range(N):
-#         ad = states[i,0]
-#         st_h = states[i,1]
-#         st_w = states[i,2]
-#         idx = np.nonzero((AD==ad) & (ST_h==st_h) & (ST_w==st_w))[0]
-#         if std:
-#             mom[0,:,i] = np.nanstd(probs_h[idx,:],axis=0)
-#             mom[1,:,i] = np.nanstd(probs_w[idx,:],axis=0)           
-#         else:
-#             mom[0,:,i] = np.nanmean(probs_h[idx,:],axis=0)
-#             mom[1,:,i] = np.nanmean(probs_w[idx,:],axis=0)            
-#     mom = mom.ravel()
-#     mom[np.isnan(mom)] = 0 # there will be some nans,since we don't observe probs for all wives (due to age difference)
-#     return mom             # and some groups are potentially very small, so if all die, then we don't observe probs
+    # invert
+    std_inv[idx] = 1/std[idx]
+
+    # scale weights
+    x_up = [i-start_age for i in scale_up]
+    x_down = [i-start_age for i in scale_down]    
+    y_all = std_inv.reshape(11,8).copy()
+    y_all[x_up] = y_all[x_up]*fac_up
+    y_all[x_down] = y_all[x_down]/fac_down    
+
+    # weight matrix
+    return np.eye(y_all.size)*y_all.ravel()
+
+def weight_matrix_couple(std,scale_up=[60,61,62,63,64,65],fac_up=3,scale_down=[58,59],fac_down=100,start_age=58):
+
+    # preallocate
+    std_inv = np.zeros(std.shape)
+
+    # find all above zero
+    idx = np.nonzero(std>0)[0]
+
+    # invert
+    std_inv[idx] = 1/std[idx]
+
+    # scale weights
+    x_up = [i-start_age for i in scale_up]
+    x_down = [i-start_age for i in scale_down]    
+    y_all = std_inv.reshape(2,11,25).copy()
+    y_all[:,x_up] = y_all[:,x_up]*fac_up
+    y_all[:,x_down] = y_all[:,x_down]/fac_down
+
+    # weight matrix
+    return np.eye(y_all.size)*y_all.ravel()
 
 def save_est(est_par,theta,name):
     """ save estimated parameters to "estimates"-folder """
