@@ -39,8 +39,10 @@ def func_c(c,ad,d_h,d_w,st_h,st_w,par):
     if d_h == 0 and d_w == 0:      # both retired
         alpha_h = par.alpha_0_male + hs_h*par.alpha_1
         phi_h = par.phi_0_male + hs_h*par.phi_1
+        #phi_h = par.phi_0 + hs_h*par.phi_1        
         alpha_w = par.alpha_0_female + hs_w*par.alpha_1
         phi_w = par.phi_0_female + hs_w*par.phi_1
+        #phi_w = par.phi_0 + hs_w*par.phi_1        
 
     elif d_h == 0 and d_w == 1:    # only husband retired
         alpha_h = par.alpha_0_male + hs_h*par.alpha_1

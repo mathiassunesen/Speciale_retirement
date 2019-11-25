@@ -137,7 +137,7 @@ class RetirementClass(ModelClass):
         self.par.sigma_eta = 0.435                  # taste shock
         if self.couple:
             self.par.var = np.array([0.275, 0.162]) # np.array([0.347, 0.288]) # income shocks (women first)
-            self.par.cov = 0.0 #0.00021 # 0.011                    # covariance of income shocks
+            self.par.cov = 0.0 #0.000214 # 0.011                    # covariance of income shocks
         else:
             self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
 
@@ -150,8 +150,8 @@ class RetirementClass(ModelClass):
         if self.couple:
 
             # labor market income
-            self.par.reg_labor_male =       np.array((-5.999, 0.262, 0.629, -0.532))        # order is: cons, high_skilled, age, age2
-            self.par.reg_labor_female =     np.array((-4.002, 0.318, 0.544, -0.453))        # order is: cons, high_skilled, age, age2    
+            self.par.reg_labor_male =       np.array((1.166, 0.360, 0.432, -0.406)) # np.array((-5.999, 0.262, 0.629, -0.532))        # order is: cons, high_skilled, age, age2
+            self.par.reg_labor_female =     np.array((4.261, 0.326, 0.303, -0.289)) # np.array((-4.002, 0.318, 0.544, -0.453))        # order is: cons, high_skilled, age, age2    
 
             # private pension
             self.par.g_adjust = 0.75

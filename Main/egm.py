@@ -86,4 +86,4 @@ def solve_bellman_c(t,ad,st_h,st_w,ra_h,ra_w,D_h,D_w,par,a,
             # d. upper envelope
             envelope_c(a,m_raw,c_raw,v_raw[d],m,        # input
                        c[d],v[d],                       # output
-                       ad,d_h,d_w,st_h,st_w,par)           # args for utility function  
+                       ad,d_h,d_w,st_h,st_w,par)        # args for utility function  
