@@ -28,39 +28,48 @@ def GaussHermite_lognorm(var,n):
     assert(1 - sum(w*x) < 1e-8)
     return x,w 
 
-def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women):
+def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women,joint=True):
     """ GaussHermite nodes and weights for correlated lognormal shocks """    
 
-    if np.sum(var) == 0 and cov == 0 and Nxi_men == 1 and Nxi_women == 1:
-        return np.array([np.array([1.0]),np.array([1.0])]),np.array([1.0])
-    else:
+    # normal GH
+    x0,w0 = GaussHermite(Nxi_women)
+    x1,w1 = GaussHermite(Nxi_men)
 
-        x1,w1 = GaussHermite(Nxi_women)
-        x2,w2 = GaussHermite(Nxi_men)
-
-        x1 = np.sqrt(2)*x1
-        w1 = w1/np.sqrt(np.pi)
-        x2 = np.sqrt(2)*x2
-        w2 = w2/np.sqrt(np.pi) 
+    # rescale
+    x0 = np.sqrt(2)*x0
+    w0 = w1/np.sqrt(np.pi)
+    x1 = np.sqrt(2)*x1
+    w1 = w1/np.sqrt(np.pi) 
         
-        mean1 = -0.5*var[0]
-        mean2 = -0.5*var[1]
+    # means
+    mean0 = -0.5*var[0]
+    mean1 = -0.5*var[1]
 
+    # if correlated
+    if cov != 0 and joint:
         cov_matrix = np.array(([var[0], cov], [cov, var[1]]))
         chol = np.linalg.cholesky(cov_matrix)
         assert(np.allclose(cov_matrix[:], chol @ np.transpose(chol)))
 
-        x1,x2 = np.meshgrid(x1,x2,indexing='ij')
-        w1,w2 = np.meshgrid(w1,w2,indexing='ij')    
-        x1,x2 = x1.ravel(),x2.ravel()
-        w1,w2 = w1.ravel(),w2.ravel()
+        x0,x1 = np.meshgrid(x0,x1,indexing='ij')
+        w0,w1 = np.meshgrid(w0,w1,indexing='ij')    
+        x0,x1 = x0.ravel(),x1.ravel()
+        w0,w1 = w0.ravel(),w1.ravel()
 
-        x2 = np.exp(chol[1,0]*x1 + chol[1,1]*x2 + mean2)
-        x1 = np.exp(chol[0,0]*x1 + mean1)
-        w = w1*w2
-        assert(np.allclose(np.sum(w),1))
+        x1 = np.exp(chol[1,0]*x0 + chol[1,1]*x1 + mean1)
+        x0 = np.exp(chol[0,0]*x0 + mean0)
+        w = w0*w1
 
-        return np.array([x1,x2]),w  # women first
+    else:
+        x0 = np.exp(x0*np.sqrt(var[0]) + mean0)
+        x1 = np.exp(x1*np.sqrt(var[1]) + mean1)  
+        w = w0      
+
+    # chech for precision
+    assert(1 - sum(w*x0) < 1e-8)
+    assert(1 - sum(w*x1) < 1e-8)        
+
+    return np.array([x0,x1]),w  # women first
 
 
 @njit(parallel=True)

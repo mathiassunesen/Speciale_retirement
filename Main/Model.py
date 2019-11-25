@@ -121,22 +121,23 @@ class RetirementClass(ModelClass):
         # preference parameters
         self.par.rho = 0.96                         # crra
         self.par.beta = 0.98                        # time preference
-        self.par.alpha_0_male = 0.4                 # constant, own leisure
-        self.par.alpha_0_female = 0.4               # constant, own leisure
+        self.par.alpha_0_male = 0.5                 # constant, own leisure
+        self.par.alpha_0_female = 0.3               # constant, own leisure
         self.par.alpha_1 = 0.053                    # high skilled, own leisure
         self.par.gamma = 0.08                       # bequest motive
+        self.par.v = 0.048                          # equivalence scale   
         if self.couple:
-            self.par.pareto_w = 0.5                 # pareto weight 
-            self.par.v = 0.048                      # equivalence scale                    
-            self.par.phi_0_male = 1.187             # constant, joint leisure
-            self.par.phi_0_female = 1.671           # constant, joint leisure
+            self.par.pareto_w = 0.5                 # pareto weight          
+            self.par.phi_0 = 1.0
+            # self.par.phi_0_male = 1.187             # constant, joint leisure
+            # self.par.phi_0_female = 1.671           # constant, joint leisure
             self.par.phi_1 = -0.621                 # high skilled, joint leisure                      
 
         # uncertainty/variance parameters
         self.par.sigma_eta = 0.435                  # taste shock
         if self.couple:
-            self.par.var = np.array([0.347, 0.288]) # income shocks (women first)
-            self.par.cov = 0.011                    # covariance of income shocks
+            self.par.var = np.array([0.275, 0.162]) # np.array([0.347, 0.288]) # income shocks (women first)
+            self.par.cov = 0.0 #0.00021 # 0.011                    # covariance of income shocks
         else:
             self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
 
@@ -160,14 +161,13 @@ class RetirementClass(ModelClass):
         else:
 
             # labor market income
-            self.par.reg_labor_male =       np.array((-15.956, 0.230, 0.934, -0.770))       # order is: cons, high_skilled, age, age2
-            self.par.reg_labor_female =     np.array((-18.937, 0.248, 1.036, -0.856))       # order is: cons, high_skilled, age, age2 
+            self.par.reg_labor_male =       np.array((1.166, 0.360, 0.432, -0.406)) # np.array((-15.956, 0.230, 0.934, -0.770))       # order is: cons, high_skilled, age, age2
+            self.par.reg_labor_female =     np.array((4.261, 0.326, 0.303, -0.289)) # np.array((-18.937, 0.248, 1.036, -0.856))       # order is: cons, high_skilled, age, age2 
             
             # private pension
             self.par.g_adjust = 0.75
             self.par.priv_pension_female =  744*1000/self.par.denom
             self.par.priv_pension_male =    682*1000/self.par.denom            
-
 
         # tax and retirement system
         setup.TaxSystem(self)
@@ -182,6 +182,9 @@ class RetirementClass(ModelClass):
 
     def recompute(self):
         """ recompute precomputations if institutional variables have been changed """ 
+        # equivalence scale
+        self.par.n = 1 + self.par.v*self.par.couple
+
         # 1. translate to model time and setup grids        
         setup.model_time(self.par)
         setup.grids(self.par)
@@ -269,6 +272,7 @@ class RetirementClass(ModelClass):
 
             # misc
             self.sim.probs = np.nan*np.zeros((self.par.simN,self.par.simT+extend,2))  
+            # self.sim.spouse_ret = np.zeros((self.par.simN,self.par.simT+extend,2))
             self.sim.RA = 2*np.ones((self.par.simN,2),dtype=int)
             self.sim.euler = np.nan*np.zeros((self.par.simN,self.par.simT-1))
             self.sim.GovS = np.nan*np.zeros((self.par.simN,self.par.simT))            
@@ -335,6 +339,7 @@ class RetirementClass(ModelClass):
 
 # test = RetirementClass(couple=True, load=True)
 # test.Single = RetirementClass(name='baseline_single', load=True)
+# test.simulate()
 # # test.par.simT=12
 # test.recompute()
 # test.simulate(tax=True)

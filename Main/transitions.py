@@ -295,7 +295,10 @@ def precompute_inc_couple(par):
 
     # shocks
     Nxi = par.Nxi    
-    Nxi_corr = par.Nxi_women*par.Nxi_men 
+    if par.cov == 0:
+        Nxi_corr = par.Nxi_women # same as for men
+    else:
+        Nxi_corr = par.Nxi_women*par.Nxi_men 
 
     # time lines
     extend = par.ad_min+par.ad_max

@@ -1,3 +1,7 @@
+#####################################################################
+# Source: https://www.dropbox.com/s/g1im7uqzukvqo53/web_sens.zip?dl=0
+# Thanks to Thomas Jørgensen for sharing the code
+#####################################################################
 
 # global modules
 import numpy as np
@@ -7,6 +11,7 @@ from scipy.optimize import minimize
 import pickle
 import itertools
 import warnings
+import matplotlib.pyplot as plt
 
 # local modules
 import transitions
@@ -25,27 +30,34 @@ class SimulatedMinimumDistance():
     
     '''    
 
-    def __init__(self,model,mom_data,mom_fun,recompute=False,bounds=None,name='baseline',method='nelder-mead',est_par=[],options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
+    def __init__(self,model,mom_data,mom_fun,recompute=False,bounds=None,name='baseline',method='nelder-mead',est_par=[],par_save={},options={'disp': False},print_iter=[False,1],save=False,**kwargs): # called when created
         
+        # settings for model
         self.model = model
         self.mom_data = mom_data
         self.mom_fun = mom_fun
         self.recompute = recompute
         self.name = name
 
-        # estimation settings
+        # settings for estimation
         self.bounds = bounds
         self.options = options
-        self.print_iter = print_iter
         self.method = method
+        self.est_par = est_par
+
+        # settings for printing and saving
+        self.save = save
+        self.par_save = par_save     
+        self.obj_save = []   
+        self.print_iter = print_iter
         self.iter = 0
         self.time = {self.iter: time.time()}
 
     def obj_fun(self,theta,W,*args):
         
-        self.iter += 1
-
+        # print parameters
         if self.print_iter[0]:
+            self.iter += 1
             if self.iter % self.print_iter[1] == 0:
                 self.time[self.iter] = time.time()
                 toctic = self.time[self.iter] - self.time[self.iter-self.print_iter[1]]
@@ -53,35 +65,40 @@ class SimulatedMinimumDistance():
                 for p in range(len(theta)):
                     print(f' {self.est_par[p]}={theta[p]:2.4f}', end='')
 
-        # idx = self.est_par.index('sigma_eta')
-        # if theta[idx] < 0:
-        #     self.obj = np.inf
-        # else:
+        # hardcode constraint on variance
+        if 'sigma_eta' in self.est_par and theta[self.est_par.index('sigma_eta')] < 0:
+            self.obj = np.inf
+        else:
 
-        # 1. update parameters 
-        for i in range(len(self.est_par)):
-            setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
-            if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
-                setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
+            # 1. update parameters 
+            for i in range(len(self.est_par)):
+                setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
+                if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
+                    setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
 
-        # 2. solve model with current parameters
-        self.model.solve(recompute=self.recompute)
+            # 2. solve model with current parameters
+            self.model.solve(recompute=self.recompute)
 
-        # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
-        self.model.simulate()
-        self.mom_sim = self.mom_fun(self.model.sim,*args)
+            # 3. simulate data from the model and calculate moments [have this as a complete function, used for standard errors]
+            self.model.simulate()
+            self.mom_sim = self.mom_fun(self.model,*args)
 
-        # 4. calculate objective function and return it
-        diff = self.mom_data - self.mom_sim
-        self.obj  = ((np.transpose(diff) @ W) @ diff)
+            # 4. calculate objective function and return it
+            diff = self.mom_data - self.mom_sim
+            self.obj  = ((np.transpose(diff) @ W) @ diff)
 
+        # print obj
         if self.print_iter[0]:
             if self.iter % self.print_iter[1] == 0:
-                if self.model.couple:
-                    print(f' -> {self.obj:2.4f}')
-                else:
-                    print(f' -> {self.obj:2.4f}')
-            
+                print(f' -> {self.obj:2.4f}')
+
+        # save
+        if self.save:
+            for p in range(len(theta)):
+                self.par_save[self.est_par[p]].append(theta[p])
+            self.obj_save.append(self.obj)                
+                    
+        # return
         return self.obj 
 
     def estimate(self,theta0,W,*args):
@@ -95,7 +112,7 @@ class SimulatedMinimumDistance():
         self.est = self.est_out.x
         self.W = W     
     
-    def MultiStart(self,theta0,weight,options={'print': True, 'time': 'min'}):
+    def MultiStart(self,theta0,weight,options={'print': True, 'time': 'min', 'finalN': int(5e5)}):
             
         # time
         tic_total = time.time()
@@ -137,11 +154,19 @@ class SimulatedMinimumDistance():
                 print('')
                     
         # final estimation
+
+        # change settings
         self.options['xatol'] = 0.0001
         self.options['fatol'] = 0.0001
+        self.model.par.simN = options['finalN']
+        self.model.recompute()
+
+        # estimate
         idx = np.argmin(obj)
         self.estimate(theta[idx],weight)
         toc_total = time.time()
+        
+        # prints
         if options['print']:
             print('final estimation:')
             print('success:', self.est_out.success,'|', 'feval:', self.est_out.nfev, '|', 'obj:', self.obj)
@@ -269,10 +294,11 @@ class SimulatedMinimumDistance():
             self.sens2e = ela
             self.sens2semi = semi_ela
 
-def MomFunSingle(sim,par,calc='mean'):
+def MomFunSingle(model,calc='mean'):
     """ compute moments for single model """
 
     # unpack
+    sim = model.sim
     states = np.unique(sim.states,axis=0)
     MA = sim.states[:,0]
     ST = sim.states[:,1]    
@@ -296,16 +322,133 @@ def MomFunSingle(sim,par,calc='mean'):
                 mom[:,i] = np.nanstd(probs[idx,:],axis=0)
     return mom.ravel() # collapse across rows (C-order)
 
-def MomFunCouple(sim,par,calc='mean',ages=[58,68]):
+# def MomFunCouple(model,calc='mean',ages=[58,68]):
+#     """ compute moments for couple model """    
+    
+#     # unpack
+#     par = model.par
+#     sim = model.sim
+#     AD = sim.states[:,0]
+#     ADx = np.unique(AD)
+#     ST_h = sim.states[:,1]    
+#     ST_w = sim.states[:,2]
+#     x = np.arange(ages[0], ages[1]+1)    
+#     probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
+#     probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]    
+
+#     # initialize
+#     T = len(x)
+#     N = len(ADx)+4
+#     mom = np.zeros((2,T,N))
+
+#     # 1. across AD
+#     for i in range(len(ADx)):
+#         ad = ADx[i]
+#         idx = np.nonzero((AD==ad))[0]
+#         with warnings.catch_warnings(): # ignore this specific warning
+#             warnings.simplefilter("ignore", category=RuntimeWarning)        
+#             if calc == 'mean':
+#                 mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
+#                 mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
+#             elif calc == 'std':
+#                 mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
+#                 mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)     
+
+#     # 2. across education
+#     # men
+#     hs_m = np.isin(ST_h,[1,3])
+#     mom[0,:,i+1] = np.nanmean(probs_h[~hs_m],axis=0)
+#     mom[0,:,i+2] = np.nanmean(probs_h[hs_m],axis=0)
+
+#     # women
+#     hs_w = np.isin(ST_w,[1,3])
+#     mom[1,:,i+1] = np.nanmean(probs_w[~hs_w],axis=0)
+#     mom[1,:,i+2] = np.nanmean(probs_w[hs_w],axis=0)
+
+#     # 3. across elig
+#     # men
+#     elig_m = np.isin(ST_h,[2,3])
+#     mom[0,:,i+3] = np.nanmean(probs_h[~elig_m],axis=0)
+#     mom[0,:,i+4] = np.nanmean(probs_h[elig_m],axis=0)
+
+#     # women
+#     elig_w = np.isin(ST_w,[2,3])
+#     mom[1,:,i+3] = np.nanmean(probs_w[~elig_w],axis=0)
+#     mom[1,:,i+4] = np.nanmean(probs_w[elig_w],axis=0)                        
+
+#     # return
+#     mom = mom.ravel()
+#     mom[np.isnan(mom)] = 0  # set nan to zero
+#     return mom    
+
+# # Moments on retirement status of spouse
+# def MomFunCouple(model,calc='mean',ages=[58,68]):
+#     """ compute moments for couple model """    
+    
+#     # unpack
+#     sim = model.sim
+#     par = model.par
+#     ST_h = sim.states[:,1]    
+#     ST_w = sim.states[:,2]
+#     iterator = np.array(list(itertools.product([0, 1, 2, 3], repeat=2)))
+#     x = np.arange(ages[0], ages[1]+1)    
+#     x_idx = transitions.inv_age(x,par)+par.ad_min
+#     probs_h = sim.probs[:,x_idx,1]
+#     probs_w = sim.probs[:,x_idx,0]    
+#     sret_h = sim.spouse_ret[:,x_idx,1]
+#     sret_w = sim.spouse_ret[:,x_idx,0]
+
+#     # initialize
+#     T = len(x)
+#     N = len(iterator)
+#     mom = np.zeros((2,2,T,N))
+
+#     for i in range(len(iterator)):
+#         st_h = iterator[i,0]
+#         st_w = iterator[i,1]
+#         idx = np.nonzero((ST_h==st_h) & (ST_w==st_w))[0]
+
+#         if calc == 'mean':
+
+#             # men
+#             mom[0,0,:,i] = np.nanmean(probs_h[idx]*sret_h[idx],axis=0)
+#             mom[0,1,:,i] = np.nanmean(probs_h[idx]*(1-sret_h[idx]),axis=0)
+
+#             # women
+#             mom[1,0,:,i] = np.nanmean(probs_w[idx]*sret_w[idx],axis=0)
+#             mom[1,1,:,i] = np.nanmean(probs_w[idx]*(1-sret_w[idx]),axis=0)            
+
+#         elif calc == 'std':
+
+#             # men
+#             mom[0,0,:,i] = np.nanstd(probs_h[idx]*sret_h[idx],axis=0)
+#             mom[0,1,:,i] = np.nanstd(probs_h[idx]*(1-sret_h[idx]),axis=0)
+
+#             # women
+#             mom[1,0,:,i] = np.nanstd(probs_w[idx]*sret_w[idx],axis=0)
+#             mom[1,1,:,i] = np.nanstd(probs_w[idx]*(1-sret_w[idx]),axis=0)            
+
+#     # return
+#     mom = mom.ravel()
+#     mom[np.isnan(mom)] = 0  # set nan to zero
+#     return mom
+
+def MomFunCouple(model,calc='mean',ages=[58,68]):
     """ compute moments for couple model """    
     
     # unpack
+    sim = model.sim
+    par = model.par
+
+    # unpack states
     states = sim.states
     AD = states[:,0]
     ADx = np.unique(AD)
     ST_h = sim.states[:,1]    
     ST_w = sim.states[:,2]
     iterator = np.array(list(itertools.product([0, 1, 2, 3], repeat=2)))
+    
+    # extract probs
     x = np.arange(ages[0], ages[1]+1)    
     probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
     probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]    
@@ -334,19 +477,21 @@ def MomFunCouple(sim,par,calc='mean',ages=[58,68]):
         st_w = iterator[i,1]
         idx = np.nonzero((ST_h==st_h) & (ST_w==st_w))[0]
         j = i + len(ADx)
-        if calc == 'mean':
-            mom[0,:,j] = np.nanmean(probs_h[idx],axis=0)
-            mom[1,:,j] = np.nanmean(probs_w[idx],axis=0)
-        elif calc == 'std':
-            mom[0,:,j] = np.nanstd(probs_h[idx],axis=0)
-            mom[1,:,j] = np.nanstd(probs_w[idx],axis=0)                          
+        with warnings.catch_warnings(): # ignore this specific warning
+            warnings.simplefilter("ignore", category=RuntimeWarning)            
+            if calc == 'mean':
+                mom[0,:,j] = np.nanmean(probs_h[idx],axis=0)
+                mom[1,:,j] = np.nanmean(probs_w[idx],axis=0)
+            elif calc == 'std':
+                mom[0,:,j] = np.nanstd(probs_h[idx],axis=0)
+                mom[1,:,j] = np.nanstd(probs_w[idx],axis=0)                          
 
     # return
     mom = mom.ravel()
     mom[np.isnan(mom)] = 0  # set nan to zero
     return mom
 
-def weight_matrix_single(std,scale_up=[60,61,62,63,64,65],fac_up=3,scale_down=[],fac_down=1,start_age=58):
+def weight_matrix_single(std,shape,factor=[1]*11):
     
     # preallocate
     std_inv = np.zeros(std.shape)
@@ -358,18 +503,17 @@ def weight_matrix_single(std,scale_up=[60,61,62,63,64,65],fac_up=3,scale_down=[]
     std_inv[idx] = 1/std[idx]
 
     # scale weights
-    x_up = [i-start_age for i in scale_up]
-    x_down = [i-start_age for i in scale_down]    
-    y_all = std_inv.reshape(11,8).copy()
-    y_all[x_up] = y_all[x_up]*fac_up
-    y_all[x_down] = y_all[x_down]/fac_down    
+    y_all = std_inv.reshape(shape).copy()
+    for t in range(len(factor)):
+        y_all[t] = y_all[t]*factor[t]
 
     # weight matrix
     return np.eye(y_all.size)*y_all.ravel()
 
-def weight_matrix_couple(std,scale_up=[60,61,62,63,64,65],fac_up=3,scale_down=[58,59],fac_down=100,start_age=58):
+def weight_matrix_couple(std,shape,factor=[1]*11):
 
     # preallocate
+    std[np.isnan(std)] = 0
     std_inv = np.zeros(std.shape)
 
     # find all above zero
@@ -378,15 +522,78 @@ def weight_matrix_couple(std,scale_up=[60,61,62,63,64,65],fac_up=3,scale_down=[5
     # invert
     std_inv[idx] = 1/std[idx]
 
-    # scale weights
-    x_up = [i-start_age for i in scale_up]
-    x_down = [i-start_age for i in scale_down]    
-    y_all = std_inv.reshape(2,11,25).copy()
-    y_all[:,x_up] = y_all[:,x_up]*fac_up
-    y_all[:,x_down] = y_all[:,x_down]/fac_down
+    # scale weights    
+    y_all = std_inv.reshape(shape).copy()    
+    for t in range(len(factor)):
+        y_all[:,t] = y_all[:,t]*factor[t]
 
     # weight matrix
     return np.eye(y_all.size)*y_all.ravel()
+
+def start(N,bounds):
+    outer = []
+    for _ in range(N):
+        inner = []
+        for j in range(len(bounds)):
+            inner.append(np.round(np.random.uniform(bounds[j][0],bounds[j][1]),3))
+        outer.append(inner)
+    return outer    
+
+def identification(model,true_par,est_par,true_save,par_save,start,end,N,plot=True,save_plot=False):
+    
+    # update parameters
+    for i in range(len(est_par)):
+        setattr(model.par, est_par[i], true_par[i])
+        if model.couple and hasattr(model.Single.par,est_par[i]):
+            setattr(model.Single.par,est_par[i],true_par[i])            
+    
+    # data
+    model.solve()
+    model.simulate()
+    def mom_fun(model):
+        return MomFunCouple(model)    
+    mom_data = mom_fun(model)
+    weight = np.eye(mom_data.size)
+    
+    # grids
+    x1 = np.linspace(start[0],end[0],N)
+    x2 = np.linspace(start[0],end[0],N)
+    # a = true_par[0]
+    # b = true_par[1]
+    # Q = a*true_par[2] + b*true_par[3]
+    # x2 = np.linspace(1,2,5)
+    # x1 = (1/a)*(Q-b*x2)    
+    x1,x2 = np.meshgrid(x1,x2)
+    x1,x2 = x1.ravel(),x2.ravel()
+    
+    # estimate
+    smd = SimulatedMinimumDistance(model,mom_data,mom_fun,save=True)
+    smd.est_par = par_save
+    smd.par_save = {par_save[0]: [], par_save[1]: []}
+    for i in range(N*N):
+        print(i, end=' ')    # track progress because it takes so long time
+        theta = [x1[i],x2[i]]
+        smd.obj_fun(theta,weight)
+    
+    # reset parameters
+    for i in range(len(est_par)):
+        setattr(model.par, est_par[i], true_par[i])
+        if model.couple and hasattr(model.Single.par,est_par[i]):
+            setattr(model.Single.par,est_par[i],true_par[i])                
+    
+    # return
+    x1 = x1.reshape(N,N) 
+    x2 = x2.reshape(N,N)
+    y = np.array(smd.obj_save).reshape(N,N)
+    if plot:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(x1,x2,y, cmap='viridis')
+        fig.tight_layout()
+        if save_plot:
+            return fig        
+    else:
+        return x1,x2,y
 
 def save_est(est_par,theta,name):
     """ save estimated parameters to "estimates"-folder """

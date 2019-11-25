@@ -1,5 +1,6 @@
 # global modules
 from numba import njit
+import numpy as np
 
 # local modules
 import transitions
@@ -22,7 +23,7 @@ def func(c,d,ma,st,par):
 
 
 @njit(parallel=True)
-def func_c(c,d_h,d_w,st_h,st_w,par):
+def func_c(c,ad,d_h,d_w,st_h,st_w,par):
     """ utility function for couples"""    
     
     # high skilled
@@ -49,15 +50,14 @@ def func_c(c,d_h,d_w,st_h,st_w,par):
 
     lei_h = alpha_h*(1 + phi_h)
     lei_w = alpha_w*(1 + phi_w)
-    n = 1 + par.v*(2-1) # equivalence scale
-    Crho = (c/n)**(1-par.rho)/(1-par.rho)
+    Crho = (c/par.n)**((1-par.rho)/(1-par.rho))
     w = par.pareto_w
-    return w*(Crho + lei_h) + (1-w)*(Crho + lei_w)
-
+    return Crho + w*lei_h + (1-w)*lei_w
+    
 @njit(parallel=True)
 def marg_func(c,par):     
-    return c**(-par.rho)
+    return par.n*((c/par.n)**(-par.rho))
 
 @njit(parallel=True)
 def inv_marg_func(u,par):
-    return u**(-1/par.rho)
+    return par.n*((u/par.n)**(-1/par.rho))
