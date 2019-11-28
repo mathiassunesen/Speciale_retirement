@@ -164,7 +164,6 @@ class SimulatedMinimumDistance():
                 print('')
                     
         # final estimation
-
         # change settings
         self.options['xatol'] = 0.0001
         self.options['fatol'] = 0.0001
@@ -382,64 +381,64 @@ def MomFunCoupleThomas(model,calc='mean',ages=[58,68]):
 
     return mom.ravel() # collapse across rows (C-order)       
 
-# def MomFunCouple(model,calc='mean',ages=[58,68]):
-#     """ compute moments for couple model """    
+def MomFunCoupleEduc_and_Elig(model,calc='mean',ages=[58,68]):
+    """ compute moments for couple model """    
     
-#     # unpack
-#     par = model.par
-#     sim = model.sim
-#     AD = sim.states[:,0]
-#     ADx = np.unique(AD)
-#     ST_h = sim.states[:,1]    
-#     ST_w = sim.states[:,2]
-#     x = np.arange(ages[0], ages[1]+1)    
-#     probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
-#     probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]    
+    # unpack
+    par = model.par
+    sim = model.sim
+    AD = sim.states[:,0]
+    ADx = np.unique(AD)
+    ST_h = sim.states[:,1]    
+    ST_w = sim.states[:,2]
+    x = np.arange(ages[0], ages[1]+1)    
+    probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
+    probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]    
 
-#     # initialize
-#     T = len(x)
-#     N = len(ADx)+4
-#     mom = np.zeros((2,T,N))
+    # initialize
+    T = len(x)
+    N = len(ADx)+4
+    mom = np.zeros((2,T,N))
 
-#     # 1. across AD
-#     for i in range(len(ADx)):
-#         ad = ADx[i]
-#         idx = np.nonzero((AD==ad))[0]
-#         with warnings.catch_warnings(): # ignore this specific warning
-#             warnings.simplefilter("ignore", category=RuntimeWarning)        
-#             if calc == 'mean':
-#                 mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
-#                 mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
-#             elif calc == 'std':
-#                 mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
-#                 mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)     
+    # 1. across AD
+    for i in range(len(ADx)):
+        ad = ADx[i]
+        idx = np.nonzero((AD==ad))[0]
+        with warnings.catch_warnings(): # ignore this specific warning
+            warnings.simplefilter("ignore", category=RuntimeWarning)        
+            if calc == 'mean':
+                mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
+                mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
+            elif calc == 'std':
+                mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
+                mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)     
 
-#     # 2. across education
-#     # men
-#     hs_m = np.isin(ST_h,[1,3])
-#     mom[0,:,i+1] = np.nanmean(probs_h[~hs_m],axis=0)
-#     mom[0,:,i+2] = np.nanmean(probs_h[hs_m],axis=0)
+    # 2. across education
+    # men
+    hs_m = np.isin(ST_h,[1,3])
+    mom[0,:,i+1] = np.nanmean(probs_h[~hs_m],axis=0)
+    mom[0,:,i+2] = np.nanmean(probs_h[hs_m],axis=0)
 
-#     # women
-#     hs_w = np.isin(ST_w,[1,3])
-#     mom[1,:,i+1] = np.nanmean(probs_w[~hs_w],axis=0)
-#     mom[1,:,i+2] = np.nanmean(probs_w[hs_w],axis=0)
+    # women
+    hs_w = np.isin(ST_w,[1,3])
+    mom[1,:,i+1] = np.nanmean(probs_w[~hs_w],axis=0)
+    mom[1,:,i+2] = np.nanmean(probs_w[hs_w],axis=0)
 
-#     # 3. across elig
-#     # men
-#     elig_m = np.isin(ST_h,[2,3])
-#     mom[0,:,i+3] = np.nanmean(probs_h[~elig_m],axis=0)
-#     mom[0,:,i+4] = np.nanmean(probs_h[elig_m],axis=0)
+    # 3. across elig
+    # men
+    elig_m = np.isin(ST_h,[2,3])
+    mom[0,:,i+3] = np.nanmean(probs_h[~elig_m],axis=0)
+    mom[0,:,i+4] = np.nanmean(probs_h[elig_m],axis=0)
 
-#     # women
-#     elig_w = np.isin(ST_w,[2,3])
-#     mom[1,:,i+3] = np.nanmean(probs_w[~elig_w],axis=0)
-#     mom[1,:,i+4] = np.nanmean(probs_w[elig_w],axis=0)                        
+    # women
+    elig_w = np.isin(ST_w,[2,3])
+    mom[1,:,i+3] = np.nanmean(probs_w[~elig_w],axis=0)
+    mom[1,:,i+4] = np.nanmean(probs_w[elig_w],axis=0)                        
 
-#     # return
-#     mom = mom.ravel()
-#     mom[np.isnan(mom)] = 0  # set nan to zero
-#     return mom    
+    # return
+    mom = mom.ravel()
+    mom[np.isnan(mom)] = 0  # set nan to zero
+    return mom    
 
 def MomFunCouple(model,calc='mean',ages=[58,68]):
     """ compute moments for couple model """    
@@ -500,6 +499,7 @@ def MomFunCouple(model,calc='mean',ages=[58,68]):
     return mom
 
 def weight_matrix_single(std,shape,factor=[1]*11):
+    ''' weight matrix for single model '''
     
     # preallocate
     std_inv = np.zeros(std.shape)
@@ -519,6 +519,7 @@ def weight_matrix_single(std,shape,factor=[1]*11):
     return np.eye(y_all.size)*y_all.ravel()
 
 def weight_matrix_couple(std,shape,factor=[1]*11):
+    ''' weight matrix for couple model '''
 
     # preallocate
     std[np.isnan(std)] = 0
@@ -539,6 +540,7 @@ def weight_matrix_couple(std,shape,factor=[1]*11):
     return np.eye(y_all.size)*y_all.ravel()
 
 def start(N,bounds):
+    ''' uniformly sample starting values '''
     outer = []
     for _ in range(N):
         inner = []
@@ -548,7 +550,8 @@ def start(N,bounds):
     return outer    
 
 def identification(model,true_par,est_par,true_save,par_save,par_latex,start,end,N,plot=True,save_plot=True):
-    
+    ''' plot of objective as a function of par_save '''
+
     # update parameters
     for i in range(len(est_par)):
         setattr(model.par, est_par[i], true_par[i])
@@ -566,11 +569,6 @@ def identification(model,true_par,est_par,true_save,par_save,par_latex,start,end
     # grids
     x1 = np.linspace(start[0],end[0],N)
     x2 = np.linspace(start[0],end[0],N)
-    # a = true_par[0]
-    # b = true_par[1]
-    # Q = a*true_par[2] + b*true_par[3]
-    # x2 = np.linspace(1,2,5)
-    # x1 = (1/a)*(Q-b*x2)    
     x1,x2 = np.meshgrid(x1,x2)
     x1,x2 = x1.ravel(),x2.ravel()
     
@@ -636,3 +634,39 @@ def load_est(name,couple=False):
         return CoupleDict,SingleDict
     else:
         return EstDict
+
+
+
+
+
+
+# def MomFunSingleEduc(model,calc='mean'):
+#     """ compute moments for single model """
+
+#     # unpack
+#     sim = model.sim
+#     MA = sim.states[:,0]
+#     ST = sim.states[:,1]
+#     iter_ma = [0,0,1,1]
+#     iter_hs = [[1,3], [0,2], [1,3], [0,2]]
+#     probs = sim.probs[:,1:] # 1: means exclude age 57 (since first prob is at 58)
+        
+#     # initialize
+#     T = probs.shape[1]
+#     N = 4
+#     mom = np.zeros((T,N))
+    
+#     # compute moments
+#     for i in range(N):
+#         ma = iter_ma[i]
+#         hs = iter_hs[i]
+#         idx = np.nonzero((MA==ma) & np.isin(ST,hs))[0]
+        
+#         if calc == 'mean':
+#             mom[:,i] = np.nanmean(probs[idx,:],axis=0)
+#             mom[:,i] = np.nanmean(probs[idx,:],axis=0)            
+#         elif calc == 'std':
+#             mom[:,i] = np.nanstd(probs[idx,:],axis=0)
+#             mom[:,i] = np.nanstd(probs[idx,:],axis=0)
+
+#     return mom.ravel() # collapse across rows (C-order)    
