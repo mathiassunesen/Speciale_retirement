@@ -12,6 +12,7 @@ import pickle
 import itertools
 import warnings
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.axes3d import Axes3D
 
 # local modules
 import transitions
@@ -75,6 +76,15 @@ class SimulatedMinimumDistance():
                 setattr(self.model.par,self.est_par[i],theta[i]) # like par.key = val
                 if self.model.couple and hasattr(self.model.Single.par,self.est_par[i]):
                     setattr(self.model.Single.par,self.est_par[i],theta[i]) # update also in nested single model                
+
+            # update of phi0 - just uncomment this, when estimating both
+            if 'phi_0_male' in self.est_par:
+                idx = self.est_par.index('phi_0_male')
+                setattr(self.model.par,'phi_0_female',theta[idx])
+
+            elif 'phi_0_female' in self.est_par:
+                idx = self.est_par.index('phi_0_female')
+                setattr(self.model.par,'phi_0_male',theta[idx])
 
             # 2. solve model with current parameters
             self.model.solve(recompute=self.recompute)
@@ -158,6 +168,7 @@ class SimulatedMinimumDistance():
         # change settings
         self.options['xatol'] = 0.0001
         self.options['fatol'] = 0.0001
+        startN = self.model.par.simN
         self.model.par.simN = options['finalN']
         self.model.recompute()
 
@@ -174,6 +185,10 @@ class SimulatedMinimumDistance():
             print('start par:', theta[idx])            
             print('par:', self.est)
             print('')
+
+        # reset N
+        self.model.par.simN = startN
+        self.model.recompute()
 
     def std_error(self,theta,W,Nobs,Nsim,step=1.0e-4,*args):
         ''' Calculate standard errors and sensitivity measures '''
@@ -294,6 +309,56 @@ class SimulatedMinimumDistance():
             self.sens2e = ela
             self.sens2semi = semi_ela
 
+def ols(y,X):
+    return np.linalg.inv(np.transpose(X)@X)@np.transpose(X)@y
+
+def prepareSingle_reg(model,ma):
+    
+    # info
+    idx = np.nonzero(model.sim.states[:,0]==ma)[0]
+    alive = model.sim.alive[idx,3:]
+    hs = np.isin(model.sim.states[:,1],[1,3])[idx]
+    Nt = np.sum(alive,axis=0)
+    T = alive.shape[1]
+    N = np.sum(Nt)
+    age = np.concatenate((np.zeros(1), np.cumsum(Nt))).astype(int)    
+
+    # initialize y
+    y = np.zeros(N)
+
+    # create X
+    X = np.zeros((N,T+1))
+    for i in range(len(age)-1):
+        X[age[i]:age[i+1],i] = 1
+        X[age[i]:age[i+1],-1] = hs[alive[:,i]==1]*1
+
+    return {'y': y, 'X': X, 'alive': alive, 'idx': idx, 'age': age}
+
+def MomFunSingle_reg(model,pre):
+    
+    # retirement age for all
+    ret_age_total = np.nanargmin(model.sim.d,axis=1)+57
+    y_lst = []
+    for ma in [0,1]:
+        
+        # unpack
+        y = pre[ma]['y']
+        X = pre[ma]['X']
+        alive = pre[ma]['alive']
+        idx = pre[ma]['idx']
+        age = pre[ma]['age']
+        ret_age = ret_age_total[idx]
+        
+        # create y
+        for i in range(len(age)-1):
+            y[age[i]:age[i+1]] = ret_age[alive[:,i]==1]==i+60
+            
+        # ols
+        y_lst.append(ols(y,X))
+        
+    return np.concatenate(y_lst)
+
+
 def MomFunSingle(model,calc='mean'):
     """ compute moments for single model """
 
@@ -321,6 +386,51 @@ def MomFunSingle(model,calc='mean'):
             elif calc == 'std':
                 mom[:,i] = np.nanstd(probs[idx,:],axis=0)
     return mom.ravel() # collapse across rows (C-order)
+
+def MomFunSingleThomas(model,calc='mean'):
+    """ compute aggregate moments for matching with data from Thomas """
+
+    # unpack
+    sim = model.sim
+    MA = sim.states[:,0]    
+    probs = sim.probs[:,1:] # 1: means exclude age 57 (since first prob is at 58)
+        
+    # initialize
+    mom = np.zeros((2,probs.shape[1]))
+    
+    # compute moments
+    for ma in [0,1]:
+        idx = np.nonzero(MA==ma)[0]            
+        if calc == 'mean': 
+            mom[ma] = np.nanmean(probs[idx,:],axis=0)
+        elif calc == 'std':
+            mom[ma] = np.nanstd(probs[idx,:],axis=0)
+    return mom.ravel() # collapse across rows (C-order)    
+
+def MomFunCoupleThomas(model,calc='mean',ages=[58,68]):
+    """ compute aggregate moments for matching with data from Thomas """
+
+    # unpack
+    sim = model.sim
+    par = model.par
+
+    # extract probs
+    x = np.arange(ages[0], ages[1]+1)    
+    probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
+    probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]     
+        
+    # initialize
+    mom = np.zeros((2,len(x)))
+    
+    # compute moments
+    if calc == 'mean':
+        mom[1] = np.nanmean(probs_h,axis=0)
+        mom[0] = np.nanmean(probs_w,axis=0)
+    elif calc == 'std':
+        mom[1] = np.nanstd(probs_h,axis=0)
+        mom[0] = np.nanstd(probs_w,axis=0)
+
+    return mom.ravel() # collapse across rows (C-order)       
 
 # def MomFunCouple(model,calc='mean',ages=[58,68]):
 #     """ compute moments for couple model """    
@@ -539,7 +649,7 @@ def start(N,bounds):
         outer.append(inner)
     return outer    
 
-def identification(model,true_par,est_par,true_save,par_save,start,end,N,plot=True,save_plot=False):
+def identification(model,true_par,est_par,true_save,par_save,par_latex,start,end,N,plot=True,save_plot=True):
     
     # update parameters
     for i in range(len(est_par)):
@@ -588,7 +698,18 @@ def identification(model,true_par,est_par,true_save,par_save,start,end,N,plot=Tr
     if plot:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(x1,x2,y, cmap='viridis')
+        ax.plot_surface(x1,x2,y, 
+                        rstride=2, cstride=2,
+                        cmap=plt.cm.jet,
+                        alpha=0.7,
+                        linewidth=0.25)
+        ax.xaxis.set_rotate_label(False)
+        ax.yaxis.set_rotate_label(False)
+        ax.set_xlabel(par_latex[0], fontsize=20)
+        ax.set_ylabel(par_latex[1], fontsize=20)
+        ax.set_xticklabels(['',np.round(np.min(x1),1),'','','','',np.round(np.max(x1),1)])
+        ax.set_yticklabels(['',np.round(np.min(x2),1),'','','','',np.round(np.max(x2),1)])
+        ax.tick_params(axis='both', which='major', labelsize=12)  
         fig.tight_layout()
         if save_plot:
             return fig        

@@ -1,6 +1,5 @@
 # global modules
 from numba import njit
-import numpy as np
 
 # local modules
 import transitions
@@ -23,7 +22,7 @@ def func(c,d,ma,st,par):
 
 
 @njit(parallel=True)
-def func_c(c,ad,d_h,d_w,st_h,st_w,par):
+def func_c(c,d_h,d_w,st_h,st_w,par):
     """ utility function for couples"""    
     
     # high skilled
@@ -38,11 +37,9 @@ def func_c(c,ad,d_h,d_w,st_h,st_w,par):
 
     if d_h == 0 and d_w == 0:      # both retired
         alpha_h = par.alpha_0_male + hs_h*par.alpha_1
-        # phi_h = par.phi_0_male + hs_h*par.phi_1
-        phi_h = par.phi_0 + hs_h*par.phi_1        
+        phi_h = par.phi_0_male + hs_h*par.phi_1
         alpha_w = par.alpha_0_female + hs_w*par.alpha_1
-        # phi_w = par.phi_0_female + hs_w*par.phi_1
-        phi_w = par.phi_0 + hs_w*par.phi_1        
+        phi_w = par.phi_0_female + hs_w*par.phi_1
 
     elif d_h == 0 and d_w == 1:    # only husband retired
         alpha_h = par.alpha_0_male + hs_h*par.alpha_1
@@ -52,14 +49,19 @@ def func_c(c,ad,d_h,d_w,st_h,st_w,par):
 
     lei_h = alpha_h*(1 + phi_h)
     lei_w = alpha_w*(1 + phi_w)
-    Crho = (c/par.n)**((1-par.rho)/(1-par.rho))
+    n = 1 + par.v # equivalence scale
+    Crho = (c/n)**(1-par.rho)/(1-par.rho)
     w = par.pareto_w
-    return Crho + w*lei_h + (1-w)*lei_w
-    
+    return w*(Crho + lei_h) + (1-w)*(Crho + lei_w)
+
 @njit(parallel=True)
 def marg_func(c,par):     
-    return par.n*((c/par.n)**(-par.rho))
+    # return c**(-par.rho)
+    n = 1 + par.v*par.couple
+    return n*(c/n)**(-par.rho)
 
 @njit(parallel=True)
 def inv_marg_func(u,par):
-    return par.n*((u/par.n)**(-1/par.rho))
+    # return u**(-1/par.rho)
+    n = 1 + par.v*par.couple
+    return n*(u/n)**(-1/par.rho)

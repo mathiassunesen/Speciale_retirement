@@ -17,6 +17,8 @@ def single_lists():
 
             # boolean
             ('couple',boolean),
+            ('Thomas',boolean),
+            ('pension_no_tax',boolean),
 
             # misc
             ('denom',double),
@@ -52,9 +54,8 @@ def single_lists():
             ('alpha_0_male',double), 
             ('alpha_0_female',double),          
             ('alpha_1',double),
-            ('gamma',double),     
-            ('v',double),
-            ('n',double),       
+            ('gamma',double),            
+            ('v',double),         
 
             # uncertainty/variance parameters
             ('sigma_eta',double), 
@@ -182,8 +183,7 @@ def couple_lists():
     parlist = [ # (name,numba type), parameters, grids etc.
 
             # preference parameters
-            ('pareto_w',double),
-            ('phi_0',double),
+            ('pareto_w',double),   
             ('phi_0_male',double),
             ('phi_0_female',double),
             ('phi_1',double),
@@ -225,7 +225,6 @@ def couple_lists():
 
             # misc
             ('probs',double[:,:,:]), 
-            ('spouse_ret',double[:,:,:]),
             ('RA',int32[:,:]),
             ('euler',double[:,:]),
             ('GovS',double[:,:]),
@@ -469,6 +468,9 @@ def init_sim_couple(par,sim):
     extend = ad_min + ad_max    
     sim.choiceP = np.random.rand(par.simN,par.simT+extend,2)
     deadP = np.random.rand(par.simN,par.simT+extend,2)  
+    # mu = -0.5*par.var      
+    # Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))      
+    # sim.shocks_joint = np.exp(np.random.multivariate_normal(mu,Cov,size=(par.simN,min(par.simT,par.Tr))))
             
     # precompute
     AD = sim.states[:,0]
@@ -523,6 +525,11 @@ def init_sim_labor_couple(par,sim,shocks_joint,shocks_w,shocks_h):
     ad_max = par.ad_max
     extend = ad_min + ad_max
     Tr = min(par.simT,par.Tr)
+    
+    # shocks
+    # shocks_joint = sim.shocks_joint
+    # shocks_w = np.exp(np.random.normal(-0.5*par.var[0], np.sqrt(par.var[0]), size=(par.simN,Tr+ad_min)))
+    # shocks_h = np.exp(np.random.normal(-0.5*par.var[1], np.sqrt(par.var[1]), size=(par.simN,Tr+ad_min)))    
     
     # preallocate
     sim.labor_pre = np.nan*np.zeros((par.simN,Tr+extend,2))
@@ -586,18 +593,24 @@ def state_and_m(par,sim,perc_num=10):
     if par.couple:
 
         # set states
-        data = pd.read_excel('SASdata/couple_formue.xlsx')
+        if par.Thomas:
+            data = pd.read_excel('SASdata/Thomas/couple_formue.xlsx')
+        else:
+            data = pd.read_excel('SASdata/couple_formue.xlsx')
         states = par.iterator
         n_groups = (data['Frac'].to_numpy()*par.simN).astype(int)
         n_groups[-1] = par.simN-np.sum(n_groups[:-1])   # assure it sums to simN
         sim.states = np.transpose(np.vstack((np.repeat(states[:,0],n_groups),
                                              np.repeat(states[:,1],n_groups),
                                              np.repeat(states[:,2],n_groups))))
-
+    
     else:
         
         # set states
-        data = pd.read_excel('SASdata/single_formue.xlsx')
+        if par.Thomas:
+            data = pd.read_excel('SASdata/Thomas/single_formue.xlsx')
+        else:
+            data = pd.read_excel('SASdata/single_formue.xlsx')
         states = par.iterator
         n_groups = (data['Frac'].to_numpy()*par.simN).astype(int)
         n_groups[-1] = par.simN-np.sum(n_groups[:-1])   # to assure it sums to simN

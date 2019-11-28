@@ -439,40 +439,44 @@ def compute_inc_couple(par):
 def posttax(t,par,d,inc,inc_s=np.array([np.nan]),d_s=np.nan,t_s=np.nan):
     """ compute posttax income """    
 
-    # labor market contribution is only applied to labor income
-    personal_income = (1 - par.tau_LMC*d)*inc
-
-    # working deduction (so only applied to inc)
-    # potentially extra deduction (fradrag) for use in policy simulation
-    if d == 1 and t > par.T_oap:
-        taxable_income = personal_income - np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag)
+    if par.pension_no_tax and d == 0:
+        return inc
     else:
-        taxable_income = personal_income - np.minimum(par.WD*inc,par.WD_upper)*d
 
-    # potential shared spouse deduction
-    if par.couple:
-        personal_spouse = (1 - par.tau_LMC*d_s)*inc_s
+        # labor market contribution is only applied to labor income
+        personal_income = (1 - par.tau_LMC*d)*inc
 
-        if d_s == 1 and t_s > par.T_oap:
-            taxable_spouse = personal_spouse - np.maximum(np.minimum(par.WD*inc_s,par.WD_upper),par.fradrag)*d_s
+        # working deduction (so only applied to inc)
+        # potentially extra deduction (fradrag) for use in policy simulation
+        if d == 1 and t > par.T_oap:
+            taxable_income = personal_income - np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag)
         else:
-            taxable_spouse = personal_spouse - np.minimum(par.WD*inc_s,par.WD_upper)*d_s
-        y_l = par.y_low + np.maximum(0,par.y_low-taxable_spouse)
-        y_m = par.y_low_m + np.maximum(0,par.y_low_m-personal_spouse)
-    
-    else:
-        y_l = par.y_low*np.ones(inc.shape)
-        y_m = par.y_low_m*np.ones(inc.shape)
+            taxable_income = personal_income - np.minimum(par.WD*inc,par.WD_upper)*d
+
+        # potential shared spouse deduction
+        if par.couple:
+            personal_spouse = (1 - par.tau_LMC*d_s)*inc_s
+
+            if d_s == 1 and t_s > par.T_oap:
+                taxable_spouse = personal_spouse - np.maximum(np.minimum(par.WD*inc_s,par.WD_upper),par.fradrag)*d_s
+            else:
+                taxable_spouse = personal_spouse - np.minimum(par.WD*inc_s,par.WD_upper)*d_s
+            y_l = par.y_low + np.maximum(0,par.y_low-taxable_spouse)
+            y_m = par.y_low_m + np.maximum(0,par.y_low_m-personal_spouse)
         
-    # taxes
-    T_c = np.maximum(0,par.tau_c*(taxable_income - y_l[:]))
-    T_h = np.maximum(0,par.tau_h*(taxable_income - y_l[:]))
-    T_l = np.maximum(0,par.tau_m*(personal_income - y_l[:]))
-    T_m = np.maximum(0,par.tau_m*(personal_income - y_m[:]))
-    T_u = np.maximum(0,np.minimum(par.tau_u,par.tau_max)*(personal_income - par.y_low_u))
-        
-    # return posttax income
-    return personal_income - T_c - T_h - T_l - T_m - T_u            
+        else:
+            y_l = par.y_low*np.ones(inc.shape)
+            y_m = par.y_low_m*np.ones(inc.shape)
+            
+        # taxes
+        T_c = np.maximum(0,par.tau_c*(taxable_income - y_l[:]))
+        T_h = np.maximum(0,par.tau_h*(taxable_income - y_l[:]))
+        T_l = np.maximum(0,par.tau_m*(personal_income - y_l[:]))
+        T_m = np.maximum(0,par.tau_m*(personal_income - y_m[:]))
+        T_u = np.maximum(0,np.minimum(par.tau_u,par.tau_max)*(personal_income - par.y_low_u))
+            
+        # return posttax income
+        return personal_income - T_c - T_h - T_l - T_m - T_u            
 
 ##################################
 ####       transitions       #####

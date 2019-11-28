@@ -304,7 +304,7 @@ def lifecycle_c(sim,sol,single_sol,par,single_par):
                                         # if both are alive we get 4 slices (4 different labor market status)
                                         if al_h == 1 and al_w == 1:
                                             idx = idx_alive[(d_h[idx_alive,th_idx]==dh) & (d_w[idx_alive,tw_idx]==dw)]
-                                            simulate_couple(t,ad,st_h,st_w,elig_h,elig_w,ra_h,ra_w,sim.c,sim.m,sim.a,d_h,d_w,probs_h,probs_w,sim.spouse_ret,RA_h,RA_w,sim.GovS,
+                                            simulate_couple(t,ad,st_h,st_w,elig_h,elig_w,ra_h,ra_w,sim.c,sim.m,sim.a,d_h,d_w,probs_h,probs_w,RA_h,RA_w,sim.GovS,
                                                             sol,single_sol,par,single_par,sim,
                                                             idx,dh,dw)
 
@@ -321,7 +321,7 @@ def lifecycle_c(sim,sol,single_sol,par,single_par):
                                                             idx,dw,ad=ad,ad_min=par.ad_min)
 
 @njit(parallel=True)
-def simulate_couple(t,ad,st_h,st_w,elig_h,elig_w,ra_h,ra_w,c,m,a,d_h,d_w,probs_h,probs_w,spouse_ret,RA_h,RA_w,GovS,
+def simulate_couple(t,ad,st_h,st_w,elig_h,elig_w,ra_h,ra_w,c,m,a,d_h,d_w,probs_h,probs_w,RA_h,RA_w,GovS,
                     sol,single_sol,par,single_par,sim,idx,dh,dw):
     """ simulate for couples """
 
@@ -329,7 +329,7 @@ def simulate_couple(t,ad,st_h,st_w,elig_h,elig_w,ra_h,ra_w,c,m,a,d_h,d_w,probs_h
         if t > 0:
             update_m_c(t,ad,st_h,st_w,ra_h,ra_w,dh,dw,m,sim,par,idx,GovS)        
         c_interp,v_interp = ConsValue_c(t,ad,st_h,st_w,ra_h,ra_w,dh,dw,m,sol,par,idx)
-        optimal_choices_c(t,ad,dh,dw,c,d_h,d_w,probs_h,probs_w,spouse_ret,c_interp,v_interp,sim,par,idx)
+        optimal_choices_c(t,ad,dh,dw,c,d_h,d_w,probs_h,probs_w,c_interp,v_interp,sim,par,idx)
         if dh == 1:
             update_ra(t,elig_h,RA_h,par,idx)
         if dw == 1:
@@ -452,7 +452,7 @@ def ConsValue_c(t,ad,st_h,st_w,ra_h,ra_w,d_h,d_w,m,sol,par,idx):
     return c_interp,v_interp
 
 @njit(parallel=True)
-def optimal_choices_c(t,ad,dh_t,dw_t,c,d_h,d_w,probs_h,probs_w,spouse_ret,c_interp,v_interp,sim,par,idx):
+def optimal_choices_c(t,ad,dh_t,dw_t,c,d_h,d_w,probs_h,probs_w,c_interp,v_interp,sim,par,idx):
     """ optimal choices for couples """
 
     # unpack
@@ -572,11 +572,6 @@ def optimal_choices_c(t,ad,dh_t,dw_t,c,d_h,d_w,probs_h,probs_w,spouse_ret,c_inte
         fill_arr(c[:,t],idx[d1],c_interp[:,1])
         fill_arr(c[:,t],idx[d2],c_interp[:,2])
         fill_arr(c[:,t],idx[d3],c_interp[:,3])
-
-    # # spouse working?
-    # if t+1 < par.simT:  
-    #     fill_arr(spouse_ret[:,tw_idx,0],idx,1-dh[:])
-    #     fill_arr(spouse_ret[:,th_idx,1],idx,1-dw[:])                 
 
 # @njit(parallel=True)
 # def euler_error(t,ma,st,ra,euler,sol,par,sim,idx,ds):

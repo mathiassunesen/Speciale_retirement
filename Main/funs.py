@@ -3,7 +3,7 @@ import numpy as np
 import warnings
 from numba import njit, prange
 import time
-from prettytable import PrettyTable
+# from prettytable import PrettyTable
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
@@ -28,8 +28,8 @@ def GaussHermite_lognorm(var,n):
     assert(1 - sum(w*x) < 1e-8)
     return x,w 
 
-def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women,joint=True):
-    """ GaussHermite nodes and weights for correlated lognormal shocks """    
+def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women):
+    """ GaussHermite nodes and weights for correlated lognormal shocks """   
 
     # normal GH
     x0,w0 = GaussHermite(Nxi_women)
@@ -46,7 +46,7 @@ def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women,joint=True):
     mean1 = -0.5*var[1]
 
     # if correlated
-    if cov != 0 and joint:
+    if cov != 0:
         cov_matrix = np.array(([var[0], cov], [cov, var[1]]))
         chol = np.linalg.cholesky(cov_matrix)
         assert(np.allclose(cov_matrix[:], chol @ np.transpose(chol)))
@@ -65,12 +65,11 @@ def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women,joint=True):
         x1 = np.exp(x1*np.sqrt(var[1]) + mean1)  
         w = w0      
 
-    # chech for precision
+    # check for precision
     assert(1 - sum(w*x0) < 1e-8)
     assert(1 - sum(w*x1) < 1e-8)        
 
-    return np.array([x0,x1]),w  # women first
-
+    return np.array([x0,x1]),w  # women first     
 
 @njit(parallel=True)
 def logsum2(V, par):
