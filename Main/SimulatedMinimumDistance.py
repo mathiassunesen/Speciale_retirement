@@ -309,56 +309,6 @@ class SimulatedMinimumDistance():
             self.sens2e = ela
             self.sens2semi = semi_ela
 
-def ols(y,X):
-    return np.linalg.inv(np.transpose(X)@X)@np.transpose(X)@y
-
-def prepareSingle_reg(model,ma):
-    
-    # info
-    idx = np.nonzero(model.sim.states[:,0]==ma)[0]
-    alive = model.sim.alive[idx,3:]
-    hs = np.isin(model.sim.states[:,1],[1,3])[idx]
-    Nt = np.sum(alive,axis=0)
-    T = alive.shape[1]
-    N = np.sum(Nt)
-    age = np.concatenate((np.zeros(1), np.cumsum(Nt))).astype(int)    
-
-    # initialize y
-    y = np.zeros(N)
-
-    # create X
-    X = np.zeros((N,T+1))
-    for i in range(len(age)-1):
-        X[age[i]:age[i+1],i] = 1
-        X[age[i]:age[i+1],-1] = hs[alive[:,i]==1]*1
-
-    return {'y': y, 'X': X, 'alive': alive, 'idx': idx, 'age': age}
-
-def MomFunSingle_reg(model,pre):
-    
-    # retirement age for all
-    ret_age_total = np.nanargmin(model.sim.d,axis=1)+57
-    y_lst = []
-    for ma in [0,1]:
-        
-        # unpack
-        y = pre[ma]['y']
-        X = pre[ma]['X']
-        alive = pre[ma]['alive']
-        idx = pre[ma]['idx']
-        age = pre[ma]['age']
-        ret_age = ret_age_total[idx]
-        
-        # create y
-        for i in range(len(age)-1):
-            y[age[i]:age[i+1]] = ret_age[alive[:,i]==1]==i+60
-            
-        # ols
-        y_lst.append(ols(y,X))
-        
-    return np.concatenate(y_lst)
-
-
 def MomFunSingle(model,calc='mean'):
     """ compute moments for single model """
 
@@ -490,58 +440,6 @@ def MomFunCoupleThomas(model,calc='mean',ages=[58,68]):
 #     mom = mom.ravel()
 #     mom[np.isnan(mom)] = 0  # set nan to zero
 #     return mom    
-
-# # Moments on retirement status of spouse
-# def MomFunCouple(model,calc='mean',ages=[58,68]):
-#     """ compute moments for couple model """    
-    
-#     # unpack
-#     sim = model.sim
-#     par = model.par
-#     ST_h = sim.states[:,1]    
-#     ST_w = sim.states[:,2]
-#     iterator = np.array(list(itertools.product([0, 1, 2, 3], repeat=2)))
-#     x = np.arange(ages[0], ages[1]+1)    
-#     x_idx = transitions.inv_age(x,par)+par.ad_min
-#     probs_h = sim.probs[:,x_idx,1]
-#     probs_w = sim.probs[:,x_idx,0]    
-#     sret_h = sim.spouse_ret[:,x_idx,1]
-#     sret_w = sim.spouse_ret[:,x_idx,0]
-
-#     # initialize
-#     T = len(x)
-#     N = len(iterator)
-#     mom = np.zeros((2,2,T,N))
-
-#     for i in range(len(iterator)):
-#         st_h = iterator[i,0]
-#         st_w = iterator[i,1]
-#         idx = np.nonzero((ST_h==st_h) & (ST_w==st_w))[0]
-
-#         if calc == 'mean':
-
-#             # men
-#             mom[0,0,:,i] = np.nanmean(probs_h[idx]*sret_h[idx],axis=0)
-#             mom[0,1,:,i] = np.nanmean(probs_h[idx]*(1-sret_h[idx]),axis=0)
-
-#             # women
-#             mom[1,0,:,i] = np.nanmean(probs_w[idx]*sret_w[idx],axis=0)
-#             mom[1,1,:,i] = np.nanmean(probs_w[idx]*(1-sret_w[idx]),axis=0)            
-
-#         elif calc == 'std':
-
-#             # men
-#             mom[0,0,:,i] = np.nanstd(probs_h[idx]*sret_h[idx],axis=0)
-#             mom[0,1,:,i] = np.nanstd(probs_h[idx]*(1-sret_h[idx]),axis=0)
-
-#             # women
-#             mom[1,0,:,i] = np.nanstd(probs_w[idx]*sret_w[idx],axis=0)
-#             mom[1,1,:,i] = np.nanstd(probs_w[idx]*(1-sret_w[idx]),axis=0)            
-
-#     # return
-#     mom = mom.ravel()
-#     mom[np.isnan(mom)] = 0  # set nan to zero
-#     return mom
 
 def MomFunCouple(model,calc='mean',ages=[58,68]):
     """ compute moments for couple model """    

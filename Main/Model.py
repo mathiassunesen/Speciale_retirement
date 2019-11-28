@@ -172,8 +172,8 @@ class RetirementClass(ModelClass):
                 self.par.reg_labor_male =       np.array((-5.999, 0.262, 0.629, -0.532))        # order is: cons, high_skilled, age, age2
                 self.par.reg_labor_female =     np.array((-4.002, 0.318, 0.544, -0.453))        # order is: cons, high_skilled, age, age2    
             else:
-                self.par.reg_labor_male = np.array((1.166, 0.360, 0.432, -0.406))     # order is: cons, high_skilled, age, age2   
-                self.par.reg_labor_female = np.array((4.261, 0.326, 0.303, -0.289))   # order is: cons, high_skilled, age, age2
+                self.par.reg_labor_male =       np.array((1.166, 0.360, 0.432, -0.406))     # order is: cons, high_skilled, age, age2   
+                self.par.reg_labor_female =     np.array((4.261, 0.326, 0.303, -0.289))   # order is: cons, high_skilled, age, age2
 
             # private pension
             self.par.g_adjust = 0.75
