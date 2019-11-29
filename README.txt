@@ -1,6 +1,11 @@
 Overleaf dokument: https://www.overleaf.com/1322953718gnfxfvttpvbd
 
 This repository provides code for xxxx.
+
+Dependencies:
+https://github.com/NumEconCopenhagen/ConsumptionSaving: pip install git+https://github.com/NumEconCopenhagen/ConsumptionSaving
+https://pypi.org/project/numba/: $ conda install numba
+
 The code is found in "main" and is structured in the following way:
 
 Folder:

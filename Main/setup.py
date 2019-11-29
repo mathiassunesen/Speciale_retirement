@@ -468,9 +468,6 @@ def init_sim_couple(par,sim):
     extend = ad_min + ad_max    
     sim.choiceP = np.random.rand(par.simN,par.simT+extend,2)
     deadP = np.random.rand(par.simN,par.simT+extend,2)  
-    # mu = -0.5*par.var      
-    # Cov = np.array(([par.var[0], par.cov], [par.cov, par.var[1]]))      
-    # sim.shocks_joint = np.exp(np.random.multivariate_normal(mu,Cov,size=(par.simN,min(par.simT,par.Tr))))
             
     # precompute
     AD = sim.states[:,0]
@@ -525,11 +522,6 @@ def init_sim_labor_couple(par,sim,shocks_joint,shocks_w,shocks_h):
     ad_max = par.ad_max
     extend = ad_min + ad_max
     Tr = min(par.simT,par.Tr)
-    
-    # shocks
-    # shocks_joint = sim.shocks_joint
-    # shocks_w = np.exp(np.random.normal(-0.5*par.var[0], np.sqrt(par.var[0]), size=(par.simN,Tr+ad_min)))
-    # shocks_h = np.exp(np.random.normal(-0.5*par.var[1], np.sqrt(par.var[1]), size=(par.simN,Tr+ad_min)))    
     
     # preallocate
     sim.labor_pre = np.nan*np.zeros((par.simN,Tr+extend,2))
