@@ -381,7 +381,7 @@ def MomFunCoupleThomas(model,calc='mean',ages=[58,68]):
 
     return mom.ravel() # collapse across rows (C-order)       
 
-def MomFunCoupleEduc_and_Elig(model,calc='mean',ages=[58,68]):
+def MomFunCouple_hs_elig(model,idx_nan=[],calc='mean',ages=[58,68]):
     """ compute moments for couple model """    
     
     # unpack
@@ -438,9 +438,10 @@ def MomFunCoupleEduc_and_Elig(model,calc='mean',ages=[58,68]):
     # return
     mom = mom.ravel()
     mom[np.isnan(mom)] = 0  # set nan to zero
+    mom[idx_nan] = 0
     return mom    
 
-def MomFunCouple(model,calc='mean',ages=[58,68]):
+def MomFunCouple(model,idx_nan=[],calc='mean',ages=[58,68]):
     """ compute moments for couple model """    
     
     # unpack
@@ -496,6 +497,7 @@ def MomFunCouple(model,calc='mean',ages=[58,68]):
     # return
     mom = mom.ravel()
     mom[np.isnan(mom)] = 0  # set nan to zero
+    mom[idx_nan] = 0
     return mom
 
 def weight_matrix_single(std,shape,factor=[1]*11):

@@ -68,40 +68,100 @@ def MyPlot(G,xlim=None,ylim=None,save=True,**kwargs):
     if save:
         return fig 
 
-def LaborSupply(LS,ages,start_age):
+def LaborSupply(LS,indi,ages,start_age):
     x = np.arange(ages[0], ages[1]+1)
     x_inv = x - start_age
-    hs = LS['d'][1]['hs'][x_inv]-LS['d'][0]['hs'][x_inv]
-    ls = LS['d'][1]['ls'][x_inv]-LS['d'][0]['ls'][x_inv]
-    assert np.allclose(hs+ls,LS['d'][1]['base'][x_inv]-LS['d'][0]['base'][x_inv])
+
+    if indi == 'educ':
+        hs = LS['d'][1]['hs'][x_inv]-LS['d'][0]['hs'][x_inv]
+        ls = LS['d'][1]['ls'][x_inv]-LS['d'][0]['ls'][x_inv]
+        assert np.allclose(hs+ls,LS['d'][1]['base'][x_inv]-LS['d'][0]['base'][x_inv])
+
+    elif indi == 'educ_w':
+        hs = LS['d'][1]['hs_f'][x_inv]-LS['d'][0]['hs_f'][x_inv]
+        ls = LS['d'][1]['ls_f'][x_inv]-LS['d'][0]['ls_f'][x_inv]
+        assert np.allclose(hs+ls,LS['d'][1]['base_f'][x_inv]-LS['d'][0]['base_f'][x_inv])
+
+    elif indi == 'educ_m':
+        hs = LS['d'][1]['hs_m'][x_inv]-LS['d'][0]['hs_m'][x_inv]
+        ls = LS['d'][1]['ls_m'][x_inv]-LS['d'][0]['ls_m'][x_inv]
+        assert np.allclose(hs+ls,LS['d'][1]['base_m'][x_inv]-LS['d'][0]['base_m'][x_inv])
+
+    elif indi == 'gender':
+        hs = LS['d'][1]['base_f'][x_inv]-LS['d'][0]['base_f'][x_inv]
+        ls = LS['d'][1]['base_m'][x_inv]-LS['d'][0]['base_m'][x_inv]
+        assert np.allclose(hs+ls,LS['d'][1]['base'][x_inv]-LS['d'][0]['base'][x_inv])        
+
     return hs,ls,x
 
-def LS_bar(LS,start_age,ages,fs=17,ls=12,save=True):
+def LS_bar(LS,indi,N,start_age,ages,fs=17,ls=12,save=True):
+    
+    # set up
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
-    HS,LS,x = LaborSupply(LS,ages,start_age)
-    ax.bar(x,HS, label='High skilled')
-    ax.bar(x,LS,bottom=HS, label='Low skilled')
+    
+    # compute
+    HS,LS,x = LaborSupply(LS,indi,ages,start_age)
+    
+    # plot
+    if indi == 'gender':
+        label = ['Women', 'Men']
+    else:
+        label = ['High skilled', 'Low skilled']
+    ax.bar(x,HS*100/N, label=label[0])
+    ax.bar(x,LS*100/N,bottom=HS*100/N, label=label[1])
     ax.legend(fontsize=ls)
     ax.set_xlabel('Age',fontsize=fs)
-    ax.set_ylabel('Change in labor supply',fontsize=fs)
+    ax.set_ylabel('Pct. change in labor supply',fontsize=fs)
     ax.tick_params(axis='both', which='major', labelsize=ls)  
     fig.tight_layout()     
 
     if save:
         return fig      
 
-def Surplus(G):
-    g = np.array(G['GovS'])
-    return (g[1:]-g[0])#/abs(g[0])*100
+def RetAge_linear(G,x='base'):
+    age = []
+    for i in range(len(G)):
+        age.append(G[i][x])
 
-def GovS_plot(x,Y,labels,xlab='Deduction (100.000 DKR)',ylab='Pct. change in Surplus',lw=3,fs=17,ls=12,save=True):
+    age = np.array(age)
+    return age[1:]-age[0]
+
+def RetAge_plot(x,Y,labels,xlab,ylab,lw=3,fs=17,ls=12,line_45=True,save=True):
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+
+    # plot
+    if line_45:
+        ax.plot(x,x, linewidth=lw, label='45 degree line', linestyle='--', color='k')
+    for i in range(len(Y)):
+        g = RetAge_linear(Y[i]['RetAge'])
+        ax.plot(x,g, linewidth=lw, label=labels[i], marker='o')    
+    
+    # details
+    ax.set_xlabel(xlab, fontsize=fs)
+    ax.set_ylabel(ylab, fontsize=fs)    
+    ax.legend(fontsize=ls)
+    ax.tick_params(axis='both', which='major', labelsize=ls)
+    fig.tight_layout()
+
+    if save:
+        return fig                
+
+def Surplus(G,N,change='Pct'):
+    g = np.array(G['GovS'])
+    if change == 'Pct':
+        return (g[1:]-g[0])/abs(g[0])*100
+    elif change == 'Abs':
+        return (g[1:]-g[0])/N
+
+def GovS_plot(x,Y,labels,xlab,ylab,lw=3,fs=17,ls=12,N=[1,1,1],change='Pct',save=True):
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
 
     # plot
     for i in range(len(Y)):
-        g = Surplus(Y[i])
+        g = Surplus(Y[i],N[i],change)
         ax.plot(x,g, linewidth=lw, label=labels[i], marker='o')    
     
     # details
@@ -113,6 +173,40 @@ def GovS_plot(x,Y,labels,xlab='Deduction (100.000 DKR)',ylab='Pct. change in Sur
 
     if save:
         return fig
+
+def GovS_pct_change_plot(x,Y,labels,xlab,ylab,lw=3,fs=17,ls=12,save=True):
+    fig = plt.figure()
+    ax1 = fig.add_subplot(1,1,1)
+
+    # pre
+    lst = []
+    for i in range(len(Y)):
+        lst.append(Surplus(Y[i],1,'Abs'))
+    g1 = (np.array(lst[0])/np.array(lst[1])-1)*100
+    g2 = (np.array(lst[0])/np.array(lst[2])-1)*100    
+
+    # plot
+    lns1 = ax1.plot(x,g1, linewidth=lw, label=labels[0], marker='o') 
+    ax2 = ax1.twinx()
+    lns2 = ax2.plot(x,g2, 'b', marker='o', linewidth=lw, label=labels[1])     
+    
+    # details
+    ax1.set_xlabel(xlab, fontsize=fs)
+    ax1.set_ylabel(ylab, fontsize=fs)    
+    ax1.legend(fontsize=ls)
+    ax1.tick_params(axis='both', which='major', labelsize=ls)
+    ax2.set_xlabel(xlab, fontsize=fs)
+    lns = lns1+lns2
+    labs = [l.get_label() for l in lns]
+    ax1.legend(lns, labs, fontsize=ls)
+    ax1.set_ylim([np.min(g1)*0.8, np.max(g1)*1.2])
+    ax2.set_ylim([np.min(g2)*0.8, np.max(g2)*1.2])        
+    ax2.tick_params(axis='both', which='major', labelsize=ls)
+    ax2.grid(False)    
+    fig.tight_layout()
+
+    if save:
+        return fig    
 
 def policy(model,var,T,MA,ST,RA,D,label=False,xlim=None,ylim=None,bottom=0,top=False):
 
@@ -452,13 +546,39 @@ def RetAge_S(model,MA=[0,1],ST=[0,1,2,3]):
     # return
     return age
 
+def RetAge_C(model,ma,AD=[-4,-3,-2,-1,0,1,2],ST_h=[0,1,2,3],ST_w=[0,1,2,3]):
+
+    par = model.par
+    sim = model.sim
+
+    # individuals not dying before retiring and selected group
+    ADx = sim.states[:,0]
+    ST_hx = sim.states[:,1]
+    ST_wx = sim.states[:,2]
+    idx = np.nonzero((np.any(sim.d[:,:,ma]==0,axis=1)) & 
+                     (np.isin(ADx,AD)) & (np.isin(ST_hx,ST_h)) & (np.isin(ST_wx,ST_w)))[0]
+
+    # distribution of retirement ages
+    age = np.nanmax(np.arange(par.start_T-par.ad_min,par.start_T+par.simT+par.ad_max)*
+                    sim.d[idx,:,ma],axis=1)+1
+
+    # return
+    return age    
+
 def policy_simulation(model,var,ages):
     """ policy simulation for singles"""
 
     if var == 'd':
-        return {'hs': lifecycle(model,var=var,MA=[0,1],ST=[1,3],ages=ages,calc='sum')['y'][0],
-                'base': lifecycle(model,var=var,MA=[0,1],ST=[0,1,2,3],ages=ages,calc='sum')['y'][0],
-                'ls': lifecycle(model,var=var,MA=[0,1],ST=[0,2],ages=ages,calc='sum')['y'][0]}
+        return {'hs':       lifecycle(model,var=var,MA=[0,1],ST=[1,3],ages=ages,calc='sum')['y'][0],
+                'hs_f':     lifecycle(model,var=var,MA=[0],ST=[1,3],ages=ages,calc='sum')['y'][0],
+                'hs_m':     lifecycle(model,var=var,MA=[1],ST=[1,3],ages=ages,calc='sum')['y'][0],
+                'base':     lifecycle(model,var=var,MA=[0,1],ages=ages,calc='sum')['y'][0],
+                'base_f':   lifecycle(model,var=var,MA=[0],ages=ages,calc='sum')['y'][0],
+                'base_m':   lifecycle(model,var=var,MA=[1],ages=ages,calc='sum')['y'][0],
+                'ls':       lifecycle(model,var=var,MA=[0,1],ST=[0,2],ages=ages,calc='sum')['y'][0],
+                'ls_f':     lifecycle(model,var=var,MA=[0],ST=[0,2],ages=ages,calc='sum')['y'][0],
+                'ls_m':     lifecycle(model,var=var,MA=[1],ST=[0,2],ages=ages,calc='sum')['y'][0]
+        }
 
     if var == 'GovS':
         return lifecycle(model,var=var,MA=[0,1],ST=[0,1,2,3],ages=ages,calc='total_sum')['y'][0]
@@ -472,18 +592,33 @@ def policy_simulation_c(model,var,ages):
     """ policy simulation for couples"""
 
     if var == 'd':
-        return {'hs': 
-                lifecycle_c(model,var=var,MA=[0],ST_w=[1,3],ages=ages,calc='sum')['y'][0] + 
-                lifecycle_c(model,var=var,MA=[1],ST_h=[1,3],ages=ages,calc='sum')['y'][0],
-                'base': 
-                lifecycle_c(model,var=var,MA=[0,1],ages=ages,calc='sum')['y'][0],        
-                'ls': 
-                lifecycle_c(model,var=var,MA=[0],ST_w=[0,2],ages=ages,calc='sum')['y'][0] + 
-                lifecycle_c(model,var=var,MA=[1],ST_h=[0,2],ages=ages,calc='sum')['y'][0]
+        return {'hs':       lifecycle_c(model,var=var,MA=[0],ST_w=[1,3],ages=ages,calc='sum')['y'][0] + 
+                            lifecycle_c(model,var=var,MA=[1],ST_h=[1,3],ages=ages,calc='sum')['y'][0],
+                'hs_f':     lifecycle_c(model,var=var,MA=[0],ST_w=[1,3],ages=ages,calc='sum')['y'][0],
+                'hs_m':     lifecycle_c(model,var=var,MA=[1],ST_h=[1,3],ages=ages,calc='sum')['y'][0],
+                'base':     lifecycle_c(model,var=var,MA=[0,1],ages=ages,calc='sum')['y'][0],
+                'base_f':   lifecycle_c(model,var=var,MA=[0],ages=ages,calc='sum')['y'][0],
+                'base_m':   lifecycle_c(model,var=var,MA=[1],ages=ages,calc='sum')['y'][0],
+                'ls':       lifecycle_c(model,var=var,MA=[0],ST_w=[0,2],ages=ages,calc='sum')['y'][0] + 
+                            lifecycle_c(model,var=var,MA=[1],ST_h=[0,2],ages=ages,calc='sum')['y'][0],                
+                'ls_f':     lifecycle_c(model,var=var,MA=[0],ST_w=[0,2],ages=ages,calc='sum')['y'][0],
+                'ls_m':     lifecycle_c(model,var=var,MA=[1],ST_h=[0,2],ages=ages,calc='sum')['y'][0]
         }
 
     if var == 'GovS':
         return lifecycle_c(model,var=var,MA=[0,1],ages=ages,calc='total_sum')['y'][0]
+
+    if var == 'RetAge':
+        return {'hs': 
+                np.mean(np.concatenate((RetAge_C(model,ma=0,ST_w=[1,3]),
+                                        RetAge_C(model,ma=1,ST_h=[1,3])))),
+                'base': 
+                np.mean(np.concatenate((RetAge_C(model,ma=0),
+                                        RetAge_C(model,ma=1)))),
+                'ls': 
+                np.mean(np.concatenate((RetAge_C(model,ma=0,ST_w=[0,2]),
+                                        RetAge_C(model,ma=1,ST_h=[0,2]))))
+                }                                         
 
 def resolve(model,vars,recompute=True,accuracy=False,tax=True,ages=[57,110],**kwargs):
     

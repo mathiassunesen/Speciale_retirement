@@ -112,7 +112,7 @@ class RetirementClass(ModelClass):
 
         # grids
         self.par.a_max = 150    # 15 mio. kr. denominated in 100.000 kr
-        self.par.a_phi = 1.5    # curvature of grid
+        self.par.a_phi = 1.1    # curvature of grid
         self.par.Na = 200       # no. of points in a grid
         self.par.Nxi = 8        # no. of GH-points
         if self.couple:
@@ -151,8 +151,8 @@ class RetirementClass(ModelClass):
                 self.par.var = np.array([0.347, 0.288]) # income shocks (women first)
                 self.par.cov = 0.011                    # covariance of income shocks
             else:
-                self.par.var = np.array([0.275, 0.162])   # income shocks (women first)
-                self.par.cov = 0.000214               # covariance of income shocks    
+                self.par.var = np.array([0.202, 0.161]) # income shocks (women first)
+                self.par.cov = 0.02                     # covariance of income shocks    
         else:
             if self.Thomas:
                 self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
@@ -187,8 +187,8 @@ class RetirementClass(ModelClass):
                 self.par.reg_labor_male =       np.array((-15.956, 0.230, 0.934, -0.770))       # order is: cons, high_skilled, age, age2
                 self.par.reg_labor_female =     np.array((-18.937, 0.248, 1.036, -0.856))       # order is: cons, high_skilled, age, age2 
             else:
-                self.par.reg_labor_male =       np.array((-15.956, 0.230, 0.934, -0.770))       # order is: cons, high_skilled, age, age2
-                self.par.reg_labor_female =     np.array((-18.937, 0.248, 1.036, -0.856))       # order is: cons, high_skilled, age, age2                 
+                self.par.reg_labor_male =       np.array((3.374, 0.318, 0.310, -0.261))       # order is: cons, high_skilled, age, age2
+                self.par.reg_labor_female =     np.array((1.728, 0.299, 0.342, -0.278))       # order is: cons, high_skilled, age, age2                 
             
             # private pension
             self.par.g_adjust = 0.75

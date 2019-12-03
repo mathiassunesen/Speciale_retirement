@@ -56,12 +56,10 @@ def func_c(c,d_h,d_w,st_h,st_w,par):
 
 @njit(parallel=True)
 def marg_func(c,par):     
-    # return c**(-par.rho)
     n = 1 + par.v*par.couple
     return n*(c/n)**(-par.rho)
 
 @njit(parallel=True)
 def inv_marg_func(u,par):
-    # return u**(-1/par.rho)
     n = 1 + par.v*par.couple
     return n*(u/n)**(-1/par.rho)

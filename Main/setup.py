@@ -497,7 +497,7 @@ def init_sim_couple(par,sim):
                     for st_w in ST_wx:
                                                 
                         pi_h,pi_w = transitions.survival_lookup_couple(t,ad,st_h,st_w,par) 
-                        idx = np.nonzero(AD==ad)[0]                              
+                        idx = np.nonzero((AD==ad) & (ST_h==st_h) & (ST_w==st_w))[0]                              
                         dead_w = idx[pi_w < deadP_w[idx,tw_idx]]
                         dead_h = idx[pi_h < deadP_h[idx,th_idx]]
                         alive_w[dead_w,tw_idx] = 0
