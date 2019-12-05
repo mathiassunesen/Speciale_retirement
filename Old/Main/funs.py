@@ -25,7 +25,7 @@ def GaussHermite_lognorm(var,n):
     sigma = np.sqrt(var)
     x = np.exp(x*np.sqrt(2)*sigma - 0.5*var)
     w = w/np.sqrt(np.pi)
-    assert(1 - sum(w*x) < 1e-6)
+    assert(1 - sum(w*x) < 1e-8)
     return x,w 
 
 def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women):
@@ -66,8 +66,8 @@ def GH_lognorm_corr(var,cov,Nxi_men,Nxi_women):
         w = w0      
 
     # check for precision
-    assert(1 - sum(w*x0) < 1e-6)
-    assert(1 - sum(w*x1) < 1e-6)        
+    assert(1 - sum(w*x0) < 1e-8)
+    assert(1 - sum(w*x1) < 1e-8)        
 
     return np.array([x0,x1]),w  # women first     
 

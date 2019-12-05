@@ -114,10 +114,10 @@ class RetirementClass(ModelClass):
         self.par.a_max = 150    # 15 mio. kr. denominated in 100.000 kr
         self.par.a_phi = 1.1    # curvature of grid
         self.par.Na = 200       # no. of points in a grid
-        self.par.Nxi = 5        # no. of GH-points
+        self.par.Nxi = 8        # no. of GH-points
         if self.couple:
-            self.par.Nxi_men = 5
-            self.par.Nxi_women = 5 
+            self.par.Nxi_men = 8
+            self.par.Nxi_women = 8 
 
         # states
         if self.couple:
@@ -128,9 +128,9 @@ class RetirementClass(ModelClass):
         # preference parameters
         self.par.rho = 0.96                         # crra
         self.par.beta = 0.98                        # time preference
-        self.par.alpha_0_male = 0.4                 # constant, own leisure
-        self.par.alpha_0_female = 0.2               # constant, own leisure
-        self.par.alpha_1 = 0.2                      # high skilled, own leisure
+        self.par.alpha_0_male = 0.3                 # constant, own leisure
+        self.par.alpha_0_female = 0.5               # constant, own leisure
+        self.par.alpha_1 = 0.053                    # high skilled, own leisure
         self.par.gamma = 0.08                       # bequest motive
         self.par.v = 0.048                          # equivalence scale          
         if self.couple:
@@ -157,7 +157,7 @@ class RetirementClass(ModelClass):
             if self.Thomas:
                 self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
             else:
-                self.par.var = np.array([0.241, 0.123]) # income shocks (women first)
+                self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
 
         # initial estimations
         self.par.pi_adjust_f =              0.216/100  
