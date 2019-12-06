@@ -580,6 +580,11 @@ def policy_simulation(model,var,ages):
                 'ls_m':     lifecycle(model,var=var,MA=[1],ST=[0,2],ages=ages,calc='sum')['y'][0]
         }
 
+    if var == 'probs':
+        return {'base_f':   retirement_probs(model,MA=[0]),
+                'base_m':   retirement_probs(model,MA=[1])
+        }
+
     if var == 'GovS':
         return lifecycle(model,var=var,MA=[0,1],ST=[0,1,2,3],ages=ages,calc='total_sum')['y'][0]
 
@@ -603,6 +608,11 @@ def policy_simulation_c(model,var,ages):
                             lifecycle_c(model,var=var,MA=[1],ST_h=[0,2],ages=ages,calc='sum')['y'][0],                
                 'ls_f':     lifecycle_c(model,var=var,MA=[0],ST_w=[0,2],ages=ages,calc='sum')['y'][0],
                 'ls_m':     lifecycle_c(model,var=var,MA=[1],ST_h=[0,2],ages=ages,calc='sum')['y'][0]
+        }
+
+    if var == 'probs':
+        return {'base_f':   retirement_probs_c(model,ma=0),
+                'base_m':   retirement_probs_c(model,ma=1)
         }
 
     if var == 'GovS':

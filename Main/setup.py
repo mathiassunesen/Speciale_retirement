@@ -18,7 +18,7 @@ def single_lists():
             # boolean
             ('couple',boolean),
             ('Thomas',boolean),
-            ('pension_no_tax',boolean),
+            ('couple_finance',boolean),
 
             # misc
             ('denom',double),

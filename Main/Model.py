@@ -39,7 +39,7 @@ class RetirementClass(ModelClass):
     # setup #
     #########
     
-    def __init__(self,name='baseline',couple=False,year=2008,Thomas=False,
+    def __init__(self,name='baseline',couple=False,year=2008,Thomas=False,couple_finance=True,
                  load=False,single_kwargs={},**kwargs):
 
         # a. store args
@@ -47,6 +47,7 @@ class RetirementClass(ModelClass):
         self.couple = couple
         self.year = year
         self.Thomas = Thomas
+        self.couple_finance = couple_finance
 
         # b. subclasses 
         if couple:
@@ -83,15 +84,9 @@ class RetirementClass(ModelClass):
 
         """   
         # boolean
-        if self.couple:
-            self.par.couple = True
-        else:
-            self.par.couple = False
-        self.par.pension_no_tax = False
-        if self.Thomas:
-            self.par.Thomas = True
-        else:
-            self.par.Thomas = False
+        self.par.couple = self.couple
+        self.par.Thomas = self.Thomas
+        self.par.couple_finance = self.couple_finance
 
         # misc
         self.par.denom = 1e5       # all monetary variables are denominated in 100.000 DKR
@@ -130,7 +125,7 @@ class RetirementClass(ModelClass):
         self.par.beta = 0.98                        # time preference
         self.par.alpha_0_male = 0.4                 # constant, own leisure
         self.par.alpha_0_female = 0.2               # constant, own leisure
-        self.par.alpha_1 = 0.2                      # high skilled, own leisure
+        self.par.alpha_1 = 0.0                      # high skilled, own leisure
         self.par.gamma = 0.08                       # bequest motive
         self.par.v = 0.048                          # equivalence scale          
         if self.couple:
@@ -140,9 +135,9 @@ class RetirementClass(ModelClass):
                 self.par.phi_0_female = 1.671       # constant, joint leisure
                 self.par.phi_1 = -0.621             # high skilled, joint leisure   
             else:                  
-                self.par.phi_0_male = 1.3           # constant, joint leisure
-                self.par.phi_0_female = 1.3         # constant, joint leisure
-                self.par.phi_1 = -0.621             # high skilled, joint leisure                      
+                self.par.phi_0_male = 1             # constant, joint leisure
+                self.par.phi_0_female = 1           # constant, joint leisure
+                self.par.phi_1 = 0.0                # high skilled, joint leisure                      
 
         # uncertainty/variance parameters
         self.par.sigma_eta = 0.435                  # taste shock
@@ -152,7 +147,7 @@ class RetirementClass(ModelClass):
                 self.par.cov = 0.011                    # covariance of income shocks
             else:
                 self.par.var = np.array([0.202, 0.161]) # income shocks (women first)
-                self.par.cov = 0.02                     # covariance of income shocks    
+                self.par.cov = 0.002                     # covariance of income shocks    
         else:
             if self.Thomas:
                 self.par.var = np.array([0.399, 0.544]) # income shocks (women first)

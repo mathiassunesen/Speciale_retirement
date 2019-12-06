@@ -189,16 +189,11 @@ class SimulatedMinimumDistance():
         self.model.par.simN = startN
         self.model.recompute()
 
-    def std_error(self,theta,W,Nobs,Nsim,step=1.0e-4,*args):
+    def std_error(self,theta,Omega,W,Nobs,Nsim,step=1.0e-4,*args):
         ''' Calculate standard errors and sensitivity measures '''
 
         num_par = len(theta)
         num_mom = len(W[0])
-
-        self.obj_fun(theta,W)
-        diff = self.mom_data - self.mom_sim
-        diff = diff.reshape((len(diff),1))
-        Omega = diff @ np.transpose(diff)
         
         # 1. numerical gradient. The objective function is (data - sim)'*W*(data - sim) so take the negative of mom_sim
         grad = np.empty((num_mom,num_par))
@@ -336,110 +331,63 @@ def MomFunSingle(model,calc='mean'):
                 mom[:,i] = np.nanstd(probs[idx,:],axis=0)
     return mom.ravel() # collapse across rows (C-order)
 
-def MomFunSingleThomas(model,calc='mean'):
-    """ compute aggregate moments for matching with data from Thomas """
-
-    # unpack
-    sim = model.sim
-    MA = sim.states[:,0]    
-    probs = sim.probs[:,1:] # 1: means exclude age 57 (since first prob is at 58)
-        
-    # initialize
-    mom = np.zeros((2,probs.shape[1]))
-    
-    # compute moments
-    for ma in [0,1]:
-        idx = np.nonzero(MA==ma)[0]            
-        if calc == 'mean': 
-            mom[ma] = np.nanmean(probs[idx,:],axis=0)
-        elif calc == 'std':
-            mom[ma] = np.nanstd(probs[idx,:],axis=0)
-    return mom.ravel() # collapse across rows (C-order)    
-
-def MomFunCoupleThomas(model,calc='mean',ages=[58,68]):
-    """ compute aggregate moments for matching with data from Thomas """
+def MomFunCouple_agg(model,bootstrap=False,B=1000):
 
     # unpack
     sim = model.sim
     par = model.par
+
+    # 1. index
+    idx_all = np.arange(len(sim.d))
+    idx = np.nonzero(np.any(sim.d[:,:,0]==0,axis=1) & (np.any(sim.d[:,:,1]==0,axis=1)))[0]
+
+    if bootstrap:
+        
+        # sample with replacement (B replications)
+        idx_all = np.random.choice(idx_all,size=(len(idx_all),B))
+        idx = np.random.choice(idx,size=(len(idx),B))                                
+
+        # compute moments
+        mom = []
+        for b in range(B):
+            mom.append(Couple_mom_agg(sim,par,idx_all[b],idx[b]))
+        return np.array(mom)
+
+    else:
+        return Couple_mom_agg(sim,par,idx_all,idx)
+
+
+def Couple_mom_agg(sim,par,idx_all,idx,ages=[58,68]):
+
+    # unpack states
+    AD = sim.states[:,0]
+    ADx = np.arange(-7,8)
 
     # extract probs
     x = np.arange(ages[0], ages[1]+1)    
     probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
-    probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]     
+    probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]             
         
     # initialize
-    mom = np.zeros((2,len(x)))
-    
-    # compute moments
-    if calc == 'mean':
-        mom[1] = np.nanmean(probs_h,axis=0)
-        mom[0] = np.nanmean(probs_w,axis=0)
-    elif calc == 'std':
-        mom[1] = np.nanstd(probs_h,axis=0)
-        mom[0] = np.nanstd(probs_w,axis=0)
+    mom_marg = np.zeros((2,len(x))) # gender, ages/years
+    mom_joint = np.zeros(15)         # retirement age diff
 
-    return mom.ravel() # collapse across rows (C-order)       
+    # 1. marginal moments
+    mom_marg[0] = np.nanmean(probs_h[idx_all],axis=0)
+    mom_marg[1] = np.nanmean(probs_w[idx_all],axis=0)    
 
-def MomFunCouple_hs_elig(model,idx_nan=[],calc='mean',ages=[58,68]):
-    """ compute moments for couple model """    
-    
-    # unpack
-    par = model.par
-    sim = model.sim
-    AD = sim.states[:,0]
-    ADx = np.unique(AD)
-    ST_h = sim.states[:,1]    
-    ST_w = sim.states[:,2]
-    x = np.arange(ages[0], ages[1]+1)    
-    probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
-    probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]    
+    # 2. joint moments
+    ret_w = np.nanargmin(sim.d[idx,:,0],axis=1)
+    ret_h = np.nanargmin(sim.d[idx,:,1],axis=1) 
+    diff = (ret_h-ret_w+AD[idx])  # add age difference to put them on the same time scale    
+    for j in range(len(ADx)):
+        ad = ADx[j]
+        mom_joint[j] = np.sum(diff==ad)
+    mom_joint = mom_joint/np.sum(mom_joint)
 
-    # initialize
-    T = len(x)
-    N = len(ADx)+4
-    mom = np.zeros((2,T,N))
+    # return 
+    return np.concatenate((mom_marg.ravel(),mom_joint)) # flatten and join them 
 
-    # 1. across AD
-    for i in range(len(ADx)):
-        ad = ADx[i]
-        idx = np.nonzero((AD==ad))[0]
-        with warnings.catch_warnings(): # ignore this specific warning
-            warnings.simplefilter("ignore", category=RuntimeWarning)        
-            if calc == 'mean':
-                mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
-                mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
-            elif calc == 'std':
-                mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
-                mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)     
-
-    # 2. across education
-    # men
-    hs_m = np.isin(ST_h,[1,3])
-    mom[0,:,i+1] = np.nanmean(probs_h[~hs_m],axis=0)
-    mom[0,:,i+2] = np.nanmean(probs_h[hs_m],axis=0)
-
-    # women
-    hs_w = np.isin(ST_w,[1,3])
-    mom[1,:,i+1] = np.nanmean(probs_w[~hs_w],axis=0)
-    mom[1,:,i+2] = np.nanmean(probs_w[hs_w],axis=0)
-
-    # 3. across elig
-    # men
-    elig_m = np.isin(ST_h,[2,3])
-    mom[0,:,i+3] = np.nanmean(probs_h[~elig_m],axis=0)
-    mom[0,:,i+4] = np.nanmean(probs_h[elig_m],axis=0)
-
-    # women
-    elig_w = np.isin(ST_w,[2,3])
-    mom[1,:,i+3] = np.nanmean(probs_w[~elig_w],axis=0)
-    mom[1,:,i+4] = np.nanmean(probs_w[elig_w],axis=0)                        
-
-    # return
-    mom = mom.ravel()
-    mom[np.isnan(mom)] = 0  # set nan to zero
-    mom[idx_nan] = 0
-    return mom    
 
 def MomFunCouple(model,bootstrap=False,B=1000):
 
@@ -528,179 +476,6 @@ def Couple_mom(sim,par,Nhs_m,hs_m,Nhs_w,hs_w,
 
     # return 
     return np.concatenate((mom_marg.ravel(),mom_joint)) # flatten and join them 
-
-
-# def MomFunCouple(model,calc='mean',ages=[58,68]):
-
-#     # unpack
-#     sim = model.sim
-#     par = model.par
-
-#     # unpack states
-#     AD = sim.states[:,0]
-#     ST_h = sim.states[:,1]
-#     ST_w = sim.states[:,2]
-#     ADx = [-4,-3,-2,-1,0,1,2,3,4]
-#     iterator = [[[0,2],[0,2]], [[0,2],[1,3]], [[1,3],[0,2]], [[1,3],[1,3]]]
-#     # [0,2] is low skilled and [1,3] is high skilled
-
-#     # extract probs
-#     x = np.arange(ages[0], ages[1]+1)    
-#     probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
-#     probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]     
-
-#     # initialize
-#     mom_marg = np.zeros((2,len(iterator),len(x)))   # gender, education status, ages/years
-#     mom_joint = np.zeros((len(iterator),9))         # education status, retirement age diff
-
-#     # 1. compute moments
-#     for i in range(len(iterator)):
-#         st_h = iterator[i][0]
-#         st_w = iterator[i][1]
-    
-#         # 1.a marginal moments (with age time profile)
-#         idx = np.nonzero((np.isin(ST_h,st_h)) & (np.isin(ST_w,st_w)))[0]
-#         if calc == 'mean':
-#             mom_marg[1,i] = np.nanmean(probs_h[idx],axis=0)
-#             mom_marg[0,i] = np.nanmean(probs_w[idx],axis=0)
-#         elif calc == 'std':
-#             n = np.sqrt(len(idx))
-#             mom_marg[1,i] = np.nanstd(probs_h[idx],axis=0)/n
-#             mom_marg[0,i] = np.nanstd(probs_w[idx],axis=0)/n
-
-#         # 1.b joint moments
-#         idx = idx[(np.any(sim.d[idx,:,0]==0,axis=1) & (np.any(sim.d[idx,:,1]==0,axis=1)))]  # we need to observe both member retirement age
-#         ret_w = np.nanargmin(sim.d[idx,:,0],axis=1)
-#         ret_h = np.nanargmin(sim.d[idx,:,1],axis=1)
-#         diff = ret_h-ret_w+AD[idx]  # add age difference to put them on the same time scale
-        
-#         for j in range(len(ADx)):
-#             ad = ADx[j]
-#             mom_joint[i,j] = np.sum(diff==ad)
-#         mom_joint[i] = mom_joint[i]/np.sum(mom_joint[i])
-
-#         if calc == 'std':
-#             mom_joint[i] = np.sqrt((mom_joint[i]*(1-mom_joint[i])/len(idx)))
-
-#     # return
-#     return np.concatenate((mom_marg.ravel(),mom_joint.ravel())) # flatten and join them    
-
-    # # 2. joint moments
-    # for i in range(len(iterator)):
-    #     st_h = iterator[i][0]
-    #     st_w
-
-
-    # idx = np.nonzero((np.any(sim.d[:,:,0]==0,axis=1) & (np.any(sim.d[:,:,1]==0,axis=1))))[0]
-    # ret_w = np.nanargmin(sim.d[idx,:,0],axis=1)
-    # ret_h = np.nanargmin(sim.d[idx,:,1],axis=1)
-    # diff = ret_h-ret_w+AD[idx]  # add age difference to put them on same time scale
-    # for i in range(-4,5):
-    #     mom_joint[i+4] = np.sum(diff==i)
-    # mom_joint = mom_joint/np.sum(mom_joint)
-
-    # # return
-    # return np.concatenate((mom_marg.ravel(),mom_joint.ravel())) # flatten and join them
-
-# def MomFunCouple(model,idx_nan=[],calc='mean',ages=[58,68]):
-#     """ compute moments for couple model """    
-    
-#     # unpack
-#     sim = model.sim
-#     par = model.par
-
-#     # unpack states
-#     states = sim.states
-#     AD = states[:,0]
-#     ADx = np.unique(AD)
-#     ST_h = sim.states[:,1]    
-#     ST_w = sim.states[:,2]
-#     iterator = np.array(list(itertools.product([0, 1, 2, 3], repeat=2)))
-    
-#     # extract probs
-#     x = np.arange(ages[0], ages[1]+1)    
-#     probs_h = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,1]
-#     probs_w = sim.probs[:,transitions.inv_age(x,par)+par.ad_min,0]    
-
-#     # initialize
-#     T = len(x)
-#     N = len(ADx)+len(iterator)
-#     mom = np.zeros((2,T,N))
-
-#     # 1. across AD
-#     for i in range(len(ADx)):
-#         ad = ADx[i]
-#         idx = np.nonzero((AD==ad))[0]
-#         with warnings.catch_warnings(): # ignore this specific warning
-#             warnings.simplefilter("ignore", category=RuntimeWarning)        
-#             if calc == 'mean':
-#                 mom[0,:,i] = np.nanmean(probs_h[idx],axis=0)
-#                 mom[1,:,i] = np.nanmean(probs_w[idx],axis=0)
-#             elif calc == 'std':
-#                 mom[0,:,i] = np.nanstd(probs_h[idx],axis=0)
-#                 mom[1,:,i] = np.nanstd(probs_w[idx],axis=0)            
-
-#     # 2. across couple states
-#     for i in range(len(iterator)):
-#         st_h = iterator[i,0]
-#         st_w = iterator[i,1]
-#         idx = np.nonzero((ST_h==st_h) & (ST_w==st_w))[0]
-#         j = i + len(ADx)
-#         with warnings.catch_warnings(): # ignore this specific warning
-#             warnings.simplefilter("ignore", category=RuntimeWarning)            
-#             if calc == 'mean':
-#                 mom[0,:,j] = np.nanmean(probs_h[idx],axis=0)
-#                 mom[1,:,j] = np.nanmean(probs_w[idx],axis=0)
-#             elif calc == 'std':
-#                 mom[0,:,j] = np.nanstd(probs_h[idx],axis=0)
-#                 mom[1,:,j] = np.nanstd(probs_w[idx],axis=0)                          
-
-#     # return
-#     mom = mom.ravel()
-#     mom[np.isnan(mom)] = 0  # set nan to zero
-#     mom[idx_nan] = 0
-#     return mom
-
-def weight_matrix_single(std,shape,factor=[1]*11):
-    ''' weight matrix for single model '''
-    
-    # preallocate
-    std_inv = np.zeros(std.shape)
-    
-    # find all above zero
-    idx = np.nonzero(std>0)[0]
-    
-    # invert
-    std_inv[idx] = 1/std[idx]
-
-    # scale weights
-    y_all = std_inv.reshape(shape).copy()
-    for t in range(len(factor)):
-        y_all[t] = y_all[t]*factor[t]
-
-    # weight matrix
-    return np.eye(y_all.size)*y_all.ravel()
-
-def weight_matrix_couple(std,shape,factor=[1]*11):
-    ''' weight matrix for couple model '''
-
-    # preallocate
-    std[np.isnan(std)] = 0
-    std_inv = np.zeros(std.shape)
-
-    # find all above zero
-    idx = np.nonzero(std>0)[0]
-
-    # invert
-    std_inv[idx] = 1/std[idx]
-
-    # scale weights    
-    y_all = std_inv.reshape(shape).copy()    
-    for t in range(len(factor)):
-        y_all[:,t] = y_all[:,t]*factor[t]
-
-    # weight matrix
-    return np.eye(y_all.size)*y_all.ravel()
 
 def start(N,bounds):
     ''' uniformly sample starting values '''
@@ -797,39 +572,3 @@ def load_est(name,couple=False):
         return CoupleDict,SingleDict
     else:
         return EstDict
-
-
-
-
-
-
-# def MomFunSingleEduc(model,calc='mean'):
-#     """ compute moments for single model """
-
-#     # unpack
-#     sim = model.sim
-#     MA = sim.states[:,0]
-#     ST = sim.states[:,1]
-#     iter_ma = [0,0,1,1]
-#     iter_hs = [[1,3], [0,2], [1,3], [0,2]]
-#     probs = sim.probs[:,1:] # 1: means exclude age 57 (since first prob is at 58)
-        
-#     # initialize
-#     T = probs.shape[1]
-#     N = 4
-#     mom = np.zeros((T,N))
-    
-#     # compute moments
-#     for i in range(N):
-#         ma = iter_ma[i]
-#         hs = iter_hs[i]
-#         idx = np.nonzero((MA==ma) & np.isin(ST,hs))[0]
-        
-#         if calc == 'mean':
-#             mom[:,i] = np.nanmean(probs[idx,:],axis=0)
-#             mom[:,i] = np.nanmean(probs[idx,:],axis=0)            
-#         elif calc == 'std':
-#             mom[:,i] = np.nanstd(probs[idx,:],axis=0)
-#             mom[:,i] = np.nanstd(probs[idx,:],axis=0)
-
-#     return mom.ravel() # collapse across rows (C-order)    
