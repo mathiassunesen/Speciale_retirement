@@ -39,15 +39,13 @@ class RetirementClass(ModelClass):
     # setup #
     #########
     
-    def __init__(self,name='baseline',couple=False,year=2008,Thomas=False,couple_finance=True,
+    def __init__(self,name='baseline',couple=False,year=2008,
                  load=False,single_kwargs={},**kwargs):
 
         # a. store args
         self.name = name 
         self.couple = couple
         self.year = year
-        self.Thomas = Thomas
-        self.couple_finance = couple_finance
 
         # b. subclasses 
         if couple:
@@ -65,14 +63,9 @@ class RetirementClass(ModelClass):
         # d. if couple also create a single class
         if couple:
             single_kwargs['start_T'] = self.par.start_T - self.par.ad_min # add some extra time periods in the bottom        
-            single_kwargs['var'] = self.par.var
-            single_kwargs['reg_labor_male'] = self.par.reg_labor_male
-            single_kwargs['reg_labor_female'] = self.par.reg_labor_female
             single_kwargs['g_adjust'] = self.par.g_adjust
             single_kwargs['priv_pension_female'] = self.par.priv_pension_female
             single_kwargs['priv_pension_male'] = self.par.priv_pension_male            
-            single_kwargs['simN'] = 100   # we don't need sim so we don't want to waste memory
-            single_kwargs['simT'] = 1
             self.Single = RetirementClass(name=name+'_single',year=year,**single_kwargs)
     
     def pars(self,**kwargs):
@@ -85,8 +78,6 @@ class RetirementClass(ModelClass):
         """   
         # boolean
         self.par.couple = self.couple
-        self.par.Thomas = self.Thomas
-        self.par.couple_finance = self.couple_finance
 
         # misc
         self.par.denom = 1e5       # all monetary variables are denominated in 100.000 DKR
@@ -123,36 +114,24 @@ class RetirementClass(ModelClass):
         # preference parameters
         self.par.rho = 0.96                         # crra
         self.par.beta = 0.98                        # time preference
-        self.par.alpha_0_male = 0.4                 # constant, own leisure
-        self.par.alpha_0_female = 0.2               # constant, own leisure
+        self.par.alpha_0_male = 0.5                 # constant, own leisure
+        self.par.alpha_0_female = 0.3               # constant, own leisure
         self.par.alpha_1 = 0.0                      # high skilled, own leisure
         self.par.gamma = 0.08                       # bequest motive
         self.par.v = 0.048                          # equivalence scale          
         if self.couple:
             self.par.pareto_w = 0.5                 # pareto weight 
-            if self.Thomas:
-                self.par.phi_0_male = 1.187         # constant, joint leisure
-                self.par.phi_0_female = 1.671       # constant, joint leisure
-                self.par.phi_1 = -0.621             # high skilled, joint leisure   
-            else:                  
-                self.par.phi_0_male = 1             # constant, joint leisure
-                self.par.phi_0_female = 1           # constant, joint leisure
-                self.par.phi_1 = 0.0                # high skilled, joint leisure                      
+            self.par.phi_0_male = 1                 # constant, joint leisure
+            self.par.phi_0_female = 1               # constant, joint leisure
+            self.par.phi_1 = 0.0                    # high skilled, joint leisure                      
 
         # uncertainty/variance parameters
         self.par.sigma_eta = 0.435                  # taste shock
         if self.couple:
-            if self.Thomas:
-                self.par.var = np.array([0.347, 0.288]) # income shocks (women first)
-                self.par.cov = 0.011                    # covariance of income shocks
-            else:
-                self.par.var = np.array([0.202, 0.161]) # income shocks (women first)
-                self.par.cov = 0.002                     # covariance of income shocks    
+            self.par.var = np.array([0.202, 0.161]) # income shocks (women first)
+            self.par.cov = 0.002                     # covariance of income shocks    
         else:
-            if self.Thomas:
-                self.par.var = np.array([0.399, 0.544]) # income shocks (women first)
-            else:
-                self.par.var = np.array([0.241, 0.123]) # income shocks (women first)
+            self.par.var = np.array([0.241, 0.123]) # income shocks (women first)
 
         # initial estimations
         self.par.pi_adjust_f =              0.216/100  
@@ -163,12 +142,8 @@ class RetirementClass(ModelClass):
         if self.couple:
 
             # labor market income
-            if self.Thomas:
-                self.par.reg_labor_male =       np.array((-5.999, 0.262, 0.629, -0.532))        # order is: cons, high_skilled, age, age2
-                self.par.reg_labor_female =     np.array((-4.002, 0.318, 0.544, -0.453))        # order is: cons, high_skilled, age, age2    
-            else:
-                self.par.reg_labor_male =       np.array((1.166, 0.360, 0.432, -0.406))     # order is: cons, high_skilled, age, age2   
-                self.par.reg_labor_female =     np.array((4.261, 0.326, 0.303, -0.289))   # order is: cons, high_skilled, age, age2
+            self.par.reg_labor_male =       np.array((1.166, 0.360, 0.432, -0.406))     # order is: cons, high_skilled, age, age2   
+            self.par.reg_labor_female =     np.array((4.261, 0.326, 0.303, -0.289))   # order is: cons, high_skilled, age, age2
 
             # private pension
             self.par.g_adjust = 0.75
@@ -178,12 +153,8 @@ class RetirementClass(ModelClass):
         else:
 
             # labor market income
-            if self.Thomas:
-                self.par.reg_labor_male =       np.array((-15.956, 0.230, 0.934, -0.770))       # order is: cons, high_skilled, age, age2
-                self.par.reg_labor_female =     np.array((-18.937, 0.248, 1.036, -0.856))       # order is: cons, high_skilled, age, age2 
-            else:
-                self.par.reg_labor_male =       np.array((3.374, 0.318, 0.310, -0.261))       # order is: cons, high_skilled, age, age2
-                self.par.reg_labor_female =     np.array((1.728, 0.299, 0.342, -0.278))       # order is: cons, high_skilled, age, age2                 
+            self.par.reg_labor_male =       np.array((3.374, 0.318, 0.310, -0.261))       # order is: cons, high_skilled, age, age2
+            self.par.reg_labor_female =     np.array((1.728, 0.299, 0.342, -0.278))       # order is: cons, high_skilled, age, age2                 
             
             # private pension
             self.par.g_adjust = 0.75
@@ -325,9 +296,11 @@ class RetirementClass(ModelClass):
         if self.couple:
 
             # allocate memory
-            self._simulate_prep(accuracy,tax)
-
-            # simulate model
+            self.Single._simulate_prep(accuracy,tax)
+            self._simulate_prep(False,tax)
+                        
+            # simulate model          
+            simulate.lifecycle(self.Single.sim,self.Single.sol,self.Single.par)
             simulate.lifecycle_c(self.sim,self.sol,self.Single.sol,self.par,self.Single.par)
 
         else:

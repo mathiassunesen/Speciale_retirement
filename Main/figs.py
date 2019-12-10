@@ -148,8 +148,7 @@ def RetAge_plot(x,Y,labels,xlab,ylab,lw=3,fs=17,ls=12,line_45=True,save=True):
     if save:
         return fig                
 
-def Surplus(G,N,change='Pct'):
-    g = np.array(G['GovS'])
+def Surplus(g,N,change='Pct'):
     if change == 'Pct':
         return (g[1:]-g[0])/abs(g[0])*100
     elif change == 'Abs':
@@ -174,7 +173,7 @@ def GovS_plot(x,Y,labels,xlab,ylab,lw=3,fs=17,ls=12,N=[1,1,1],change='Pct',save=
     if save:
         return fig
 
-def GovS_pct_change_plot(x,Y,labels,xlab,ylab,lw=3,fs=17,ls=12,save=True):
+def pct_change_plot(x,Y,labels,xlab,ylab,lw=3,fs=17,ls=12,save=True):
     fig = plt.figure()
     ax1 = fig.add_subplot(1,1,1)
 
@@ -590,8 +589,11 @@ def policy_simulation(model,var,ages):
 
     if var == 'RetAge':
         return {'hs': np.mean(RetAge_S(model,ST=[1,3])),
+                'base_f': np.mean(RetAge_S(model,MA=[0])),
+                'base_m': np.mean(RetAge_S(model,MA=[1])),
                 'base': np.mean(RetAge_S(model)),
-                'ls': np.mean(RetAge_S(model,ST=[0,2]))}
+                'ls': np.mean(RetAge_S(model,ST=[0,2]))
+                }
 
 def policy_simulation_c(model,var,ages):
     """ policy simulation for couples"""
@@ -622,6 +624,10 @@ def policy_simulation_c(model,var,ages):
         return {'hs': 
                 np.mean(np.concatenate((RetAge_C(model,ma=0,ST_w=[1,3]),
                                         RetAge_C(model,ma=1,ST_h=[1,3])))),
+                'base_m':
+                np.mean(RetAge_C(model,ma=1)),
+                'base_f':
+                np.mean(RetAge_C(model,ma=0)),
                 'base': 
                 np.mean(np.concatenate((RetAge_C(model,ma=0),
                                         RetAge_C(model,ma=1)))),
@@ -630,41 +636,43 @@ def policy_simulation_c(model,var,ages):
                                         RetAge_C(model,ma=1,ST_h=[0,2]))))
                 }                                         
 
-def resolve(model,vars,recompute=True,accuracy=False,tax=True,ages=[57,110],**kwargs):
+# def resolve(model,vars,recompute=True,accuracy=False,tax=True,ages=[57,110],**kwargs):
     
-    # dict
-    store = {}
-    for var in vars:
-        store[var] = []
+#     # dict
+#     store = {}
+#     for var in vars:
+#         store[var] = []
 
-    # resolve model
-    keys = list(kwargs.keys())
-    values = list(kwargs.values())
-    for v in range(len(values[0])):
+#     # resolve model
+#     keys = list(kwargs.keys())
+#     values = list(kwargs.values())
+#     for v in range(len(values[0])):
         
-        # set new parameters
-        for k in range(len(keys)):
-            setattr(model.par,str(keys[k]),values[k][v])
+#         # set new parameters
+#         for k in range(len(keys)):
+#             setattr(model.par,str(keys[k]),values[k][v])
 
-        # solve and simulate
-        model.solve(recompute=recompute)
-        model.simulate(accuracy=accuracy,tax=tax)
+#         # solve and simulate
+#         model.solve(recompute=recompute)
+#         model.simulate(accuracy=accuracy,tax=tax)
 
-        # policy
-        for var in vars:
-            y = policy_simulation(model,var=var,ages=ages)
-            store[var].append(y)
+#         # policy
+#         for var in vars:
+#             y = policy_simulation(model,var=var,ages=ages)
+#             store[var].append(y)
 
-    # return
-    return store 
+#     # return
+#     return store 
 
 def resolve_c(model,vars,recompute=True,accuracy=False,tax=True,
               AD=[-4,-3,-2,-1,0,1,2,3,4],ST_h=[0,1,2,3],ST_w=[0,1,2,3],ages=[53,110],**kwargs):
 
     # dict
-    store = {}
+    couple = {}
+    single = {}
     for var in vars:
-        store[var] = []
+        couple[var] = []
+        single[var] = []
 
     # resolve model
     keys = list(kwargs.keys())
@@ -682,13 +690,20 @@ def resolve_c(model,vars,recompute=True,accuracy=False,tax=True,
 
         # policy
         for var in vars:
+
+            # couples
             y = policy_simulation_c(model,var=var,ages=ages)
-            store[var].append(y)
+            couple[var].append(y)
+
+            # singles
+            agesS = [ages[0], ages[1]-model.par.ad_min]
+            y = policy_simulation(model.Single,var=var,ages=agesS)
+            single[var].append(y)
 
     # return
-    return store
+    return {'couple': couple, 'single': single}
 
-def sens_fig_tab(sens,sense,theta,est_par_tex,fixed_par_tex):
+def sens_fig_tab(sens,sense,theta,est_par_tex,fixed_par_tex,save=True):
     
     fs = 17
     sns.set(rc={'text.usetex' : False})
@@ -699,3 +714,48 @@ def sens_fig_tab(sens,sense,theta,est_par_tex,fixed_par_tex):
     ax = sns.heatmap(sense,annot=True,fmt="2.2f",annot_kws={"size": fs},xticklabels=fixed_par_tex,yticklabels=est_par_tex,center=0,linewidth=.5,cmap=cmap)
     plt.yticks(rotation=0) 
     ax.tick_params(axis='both', which='major', labelsize=20)
+
+    if save:
+        return fig
+
+def marg_idx(smd,ma,couple):
+    if couple == 0:
+        if ma == 1:
+            idx = np.arange(11)
+        elif ma == 0:
+            idx = np.arange(11,22)
+    elif couple == 1:
+        if ma == 1:
+            idx = np.arange(22,33)
+        elif ma == 0:
+            idx = np.arange(33,44)
+    return idx
+        
+def joint_idx(smd):
+    return np.arange(44,len(smd.mom_data))
+
+def model_fit_marg(smd,ma,couple):
+    idx = marg_idx(smd,ma,couple)
+    data = {'y': [smd.mom_data[idx]], 'x': np.arange(58,69), 'label': ['Data'], 'color': 'k',
+            'linestyle': ['None'], 'marker': 'o'}
+    pred = {'y': [smd.mom_sim[idx]], 'x': np.arange(58,69), 'xticks': np.arange(58,69), 'xlabel': 'Age',
+            'ylabel': 'Retirement probability', 'label': ['Predicted']}
+    return [data,pred]
+
+def model_fit_joint(smd,save=True):
+    idx = joint_idx(smd)
+    data = smd.mom_data[idx]
+    pred = smd.mom_sim[idx]
+    
+    # plot
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)    
+    plt.bar(np.arange(-7,8),data,label='Data')
+    plt.plot(np.arange(-7,8),pred,'k--',label='Predicted',linewidth=3)
+    ax.legend(fontsize=12)
+    ax.set_xlabel('Difference in year of retirement (year_w-year_h)', fontsize=15)
+    ax.set_ylabel('Share', fontsize=15)    
+    ax.tick_params(axis='both', which='major', labelsize=15)        
+    fig.tight_layout()
+    if save:
+        return fig        

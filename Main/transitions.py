@@ -457,8 +457,8 @@ def posttax(t,par,d,inc,inc_s=np.array([np.nan]),d_s=np.nan,t_s=np.nan):
             taxable_spouse = personal_spouse - np.maximum(np.minimum(par.WD*inc_s,par.WD_upper),par.fradrag)*d_s
         else:
             taxable_spouse = personal_spouse - np.minimum(par.WD*inc_s,par.WD_upper)*d_s
-        y_l = par.y_low + np.maximum(0,par.y_low-taxable_spouse)*par.couple_finance
-        y_m = par.y_low_m + np.maximum(0,par.y_low_m-personal_spouse)*par.couple_finance
+        y_l = par.y_low + np.maximum(0,par.y_low-taxable_spouse)
+        y_m = par.y_low_m + np.maximum(0,par.y_low_m-personal_spouse)
         
     else:
         y_l = par.y_low*np.ones(inc.shape)
@@ -502,7 +502,7 @@ def oap_pretax(t,par,i=0,y=np.array([0.0]),y_spouse=np.array([0.0])):
         # compute OAP
         OAP_A = (y_h[:] < par.y_i[i])*np.maximum(0, (par.A_i[i] - np.maximum(0, par.tau_i[i]*(y_h[:] - par.D_i[i]))))
         OAP_B = (y[:] < par.y_B)*np.maximum(0, (par.B - par.tau_B*np.maximum(0, y[:] - par.D_B)))
-        OAP[:] = OAP_A*par.couple_finance + OAP_B
+        OAP[:] = OAP_A + OAP_B
 
         # OAP[:] = par.oap_B + ((y_h[:] < par.y_i[i])*
         #          np.maximum(0, (par.A_i[i] - np.maximum(0, par.tau_i[i]*(y_h[:] - par.D_i[i])))))

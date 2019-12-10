@@ -17,8 +17,6 @@ def single_lists():
 
             # boolean
             ('couple',boolean),
-            ('Thomas',boolean),
-            ('couple_finance',boolean),
 
             # misc
             ('denom',double),
@@ -585,10 +583,7 @@ def state_and_m(par,sim,perc_num=10):
     if par.couple:
 
         # set states
-        if par.Thomas:
-            data = pd.read_excel('SASdata/Thomas/couple_formue.xlsx')
-        else:
-            data = pd.read_excel('SASdata/couple_formue.xlsx')
+        data = pd.read_excel('SASdata/couple_formue.xlsx')
         states = par.iterator
         n_groups = (data['Frac'].to_numpy()*par.simN).astype(int)
         n_groups[-1] = par.simN-np.sum(n_groups[:-1])   # assure it sums to simN
@@ -599,10 +594,7 @@ def state_and_m(par,sim,perc_num=10):
     else:
         
         # set states
-        if par.Thomas:
-            data = pd.read_excel('SASdata/Thomas/single_formue.xlsx')
-        else:
-            data = pd.read_excel('SASdata/single_formue.xlsx')
+        data = pd.read_excel('SASdata/single_formue.xlsx')
         states = par.iterator
         n_groups = (data['Frac'].to_numpy()*par.simN).astype(int)
         n_groups[-1] = par.simN-np.sum(n_groups[:-1])   # to assure it sums to simN
