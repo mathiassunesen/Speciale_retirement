@@ -758,4 +758,20 @@ def model_fit_joint(smd,save=True):
     ax.tick_params(axis='both', which='major', labelsize=15)        
     fig.tight_layout()
     if save:
-        return fig        
+        return fig      
+
+def model_fit_joint_many(data,dist1,dist2,dist3,save=True):
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)    
+    plt.bar(np.arange(-7,8),data,color='k',alpha=0.5,label='Data')
+    plt.plot(np.arange(-7,8),dist1,'--',label=r'$\phi=1$',linewidth=3)
+    plt.plot(np.arange(-7,8),dist2,'--',label=r'$\phi=2$',linewidth=3)
+    plt.plot(np.arange(-7,8),dist3,'--',label=r'$\phi=3$',linewidth=3)        
+    ax.legend(fontsize=12)
+    ax.set_xlabel('Difference in year of retirement (year_w-year_h)', fontsize=15)
+    ax.set_ylabel('Share', fontsize=15)    
+    ax.tick_params(axis='both', which='major', labelsize=15) 
+    ax.set_ylim(0,0.4)       
+    fig.tight_layout()
+    if save:
+        return fig      

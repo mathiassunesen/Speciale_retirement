@@ -444,7 +444,7 @@ def posttax(t,par,d,inc,inc_s=np.array([np.nan]),d_s=np.nan,t_s=np.nan):
 
     # working deduction (so only applied to inc)
     # potentially extra deduction (fradrag) for use in policy simulation
-    if d == 1 and t > par.T_oap:
+    if d == 1 and t >= par.T_oap + par.fradrag_to_oap:
         taxable_income = personal_income - np.maximum(np.minimum(par.WD*inc,par.WD_upper),par.fradrag)
     else:
         taxable_income = personal_income - np.minimum(par.WD*inc,par.WD_upper)*d

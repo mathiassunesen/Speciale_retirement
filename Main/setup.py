@@ -72,6 +72,7 @@ def single_lists():
 
             # tax system
             ('IRA_tax',double),
+            ('fradrag_to_oap',int32),
             ('fradrag',double),
             ('tau_upper',double),
             ('tau_LMC',double),
@@ -254,6 +255,7 @@ def TaxSystem(model):
     if model.year == 2008:
 
         par.IRA_tax = 0.4               # tax for IRA (kapitalpension)
+        par.fradrag_to_oap = 1          # age difference to oap age
         par.fradrag = 0.0               # deduction for old workers (policy proposal)
         par.tau_upper = 0.59            # maximum tax rate (skatteloft)
         par.tau_LMC = 0.08              # labor market contribution (arbejdsmarkedsbidrag)
