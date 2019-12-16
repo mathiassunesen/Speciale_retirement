@@ -1,6 +1,6 @@
 Overleaf dokument: https://www.overleaf.com/1322953718gnfxfvttpvbd
 
-This repository provides code for xxxx.
+This repository provides code for Specialet: "If you go I go - A structural estimation of joint retirement in Danish households" by Frederik Kristensen og Mathias Sunesen.
 
 Dependencies:
 https://github.com/NumEconCopenhagen/ConsumptionSaving: pip install git+https://github.com/NumEconCopenhagen/ConsumptionSaving
